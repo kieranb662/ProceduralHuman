@@ -63,6 +63,21 @@
       <button id="headTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Head Sculpt</button>
     </div>
     <div id="rigTools" class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2">
+        <h2 class="font-semibold text-slate-200">Dress Up / Clothing Slots</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">The default is an unclothed, smooth doll base with bare feet and five toes per foot. Clothing is removable and follows the body rig; it never replaces body geometry.</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-outfit="base" class="py-2 rounded-xl bg-slate-800">Base body</button>
+          <button data-outfit="casual" class="py-2 rounded-xl bg-slate-800">Casual</button>
+          <button data-outfit="long" class="py-2 rounded-xl bg-slate-800">Long outfit</button>
+        </div>
+        <div id="clothingControls" class="space-y-2"></div>
+        <p id="clothingStatus" role="status" aria-live="polite" class="text-[11px] text-sky-300">All clothing slots empty.</p>
+        <details class="text-[10px] text-slate-400 select-text">
+          <summary class="cursor-pointer">Outfit API</summary>
+          <p class="mt-1 leading-relaxed">window.proceduralHuman.character.setClothing(slot, item) swaps one slot. setOutfit({ torso, arms, legs, feet }) swaps a complete outfit; omitted slots are cleared. Use "none" to undress. clothingSlots exposes each slot's items and current mesh. Slots cover both limbs and share the base skeleton and bind pose.</p>
+        </details>
+      </section>
       <section>
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-semibold text-slate-200">1. Base Locomotion &amp; Stance</h2>
@@ -581,7 +596,7 @@
       const eyeMap = makeEyeTexture();
 
       // 0: Body Skin, 1: T-Shirt, 2: Shorts, 3: Hair/Brows,
-      // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Socks, 8: Sneakers, 9: Oral Mucosa/Tongue
+      // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Tongue
       const materials = [
         new THREE.MeshPhysicalMaterial({
           map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 1.2,
@@ -883,115 +898,294 @@
       return geo;
     }
 
-    function lerpProfile(table, y) {
-      if (y <= table[0].y) return table[0];
-      for (let i = 0; i < table.length - 1; i++) {
-        const a = table[i], b = table[i + 1];
-        if (y <= b.y) {
-          const t = (y - a.y) / (b.y - a.y);
-          return {
-            y,
-            rx: THREE.MathUtils.lerp(a.rx, b.rx, t),
-            rz: THREE.MathUtils.lerp(a.rz, b.rz, t),
-            cz: THREE.MathUtils.lerp(a.cz ?? 0, b.cz ?? 0, t),
-            chest: THREE.MathUtils.lerp(a.chest ?? 0, b.chest ?? 0, t),
-          };
-        }
-      }
-      return table[table.length - 1];
-    }
-
-    // --- 2A. Torso, Shorts Pelvis, T-Shirt & Neck Builder ---
-    function buildTorsoParts(rig) {
-      const { boneIndex } = rig;
-      const segs = 32;
-
-      const weightSpineY = (y) => {
-        const b = [
-          [boneIndex.get("Hips"), 0.94, 0.14],
-          [boneIndex.get("Spine"), 1.08, 0.14],
-          [boneIndex.get("Spine1"), 1.24, 0.14],
-          [boneIndex.get("Chest"), 1.38, 0.12],
-          [boneIndex.get("Neck"), 1.49, 0.08],
-          [boneIndex.get("Head"), 1.59, 0.08],
-        ];
-        if (y >= 1.58) return normalizeAndPackWeights([[boneIndex.get("Head"), 1]]);
-        const pairs = b.map(([idx, by, sig]) => [idx, Math.exp(-Math.pow((y - by) / sig, 2))]);
-        return normalizeAndPackWeights(pairs);
+    // Shared indices, not overlapping caps, join the shoulders and bifurcated pelvis.
+    function buildBaseBodyParts(rig) {
+      const bi = (name) => rig.boneIndex.get(name);
+      const pk = normalizeAndPackWeights;
+      const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
+      const faceSlots = [], faceBands = [];
+      const interfaces = {};
+      const addVertex = (p, w) => {
+        const i = positions.length / 3;
+        positions.push(p.x, p.y, p.z);
+        uvs.push(p.x * 2 + 0.5, p.y / 1.78 + p.z);
+        colors.push(1, 1, 1);
+        skinIdx.push(...w.indices);
+        skinWgt.push(...w.weights);
+        return i;
       };
-
-      const pelvisTable = [
-        { y: 0.835, rx: 0.155, rz: 0.102, cz: -0.004 },
-        { y: 0.870, rx: 0.186, rz: 0.120, cz: -0.005 },
-        { y: 0.910, rx: 0.195, rz: 0.124, cz: -0.004 },
-        { y: 0.960, rx: 0.182, rz: 0.118, cz: -0.002 },
-        { y: 1.015, rx: 0.168, rz: 0.112, cz: 0.000 },
-        { y: 1.045, rx: 0.164, rz: 0.110, cz: 0.000 },
-      ];
-
-      const shirtTable = [
-        { y: 0.990, rx: 0.172, rz: 0.116, cz: 0.002, chest: 0.0 },
-        { y: 1.060, rx: 0.166, rz: 0.112, cz: 0.003, chest: 0.0 },
-        { y: 1.150, rx: 0.174, rz: 0.118, cz: 0.004, chest: 0.2 },
-        { y: 1.250, rx: 0.192, rz: 0.128, cz: 0.008, chest: 0.7 },
-        { y: 1.345, rx: 0.208, rz: 0.128, cz: 0.006, chest: 1.0 },
-        { y: 1.405, rx: 0.214, rz: 0.114, cz: 0.000, chest: 0.5 },
-        { y: 1.450, rx: 0.172, rz: 0.094, cz: -0.004, chest: 0.1 },
-        { y: 1.482, rx: 0.094, rz: 0.076, cz: -0.002, chest: 0.0 },
-        { y: 1.500, rx: 0.070, rz: 0.068, cz: 0.000, chest: 0.0 },
-      ];
-
-      const neckTable = [
-        { y: 1.495, rx: 0.064, rz: 0.062, cz: 0.000 },
-        { y: 1.545, rx: 0.056, rz: 0.056, cz: 0.003 },
-        { y: 1.595, rx: 0.055, rz: 0.056, cz: 0.005 },
-        { y: 1.640, rx: 0.058, rz: 0.060, cz: 0.005 },
-      ];
-
-      function makeRing(y, table, scale = 1.0, vCoord = 0) {
-        const p = lerpProfile(table, y);
-        const pts = [];
-        const wgts = [];
-        const wBase = weightSpineY(y);
-        for (let s = 0; s < segs; s++) {
-          const a = (s / segs) * Math.PI * 2;
-          const ca = Math.cos(a), sa = Math.sin(a);
-          let rx = p.rx * scale;
-          let rz = p.rz * scale;
-          if ((p.chest ?? 0) > 0 && sa > 0) {
-            rz += p.chest * 0.012 * Math.pow(sa, 1.5) * (0.6 + 0.4 * Math.abs(Math.sin(a * 2)));
-          }
-          const x = -ca * rx;
-          const z = (p.cz ?? 0) + sa * rz;
-          pts.push(new THREE.Vector3(x, y, z));
-          wgts.push(wBase);
+      const point = (i) => new THREE.Vector3().fromArray(positions, i * 3);
+      const triangle = (a, b, c, slot, band = null) => {
+        indices.push(a, b, c);
+        faceSlots.push(slot);
+        faceBands.push(band);
+      };
+      const bridge = (a, b, slot, band) => {
+        if (a.length !== b.length) throw new Error("Body interface ring size mismatch.");
+        for (let i = 0; i < a.length; i++) {
+          const j = (i + 1) % a.length;
+          triangle(a[i], a[j], b[i], slot, band);
+          triangle(a[j], b[j], b[i], slot, band);
         }
-        return { points: pts, weights: wgts, v: vCoord };
+      };
+      const spineWeight = (y) => {
+        const anchors = [["Hips", 0.96], ["Spine", 1.08], ["Spine1", 1.24],
+          ["Chest", 1.38], ["Neck", 1.51], ["Head", 1.61]];
+        for (let i = 0; i < anchors.length - 1; i++) {
+          const [a, ay] = anchors[i], [b, by] = anchors[i + 1];
+          if (y <= by) {
+            const t = THREE.MathUtils.smoothstep(y, ay, by);
+            return pk([[bi(a), 1 - t], [bi(b), t]]);
+          }
+        }
+        return pk([[bi("Head"), 1]]);
+      };
+      const torsoWeight = (p) => {
+        const side = p.x >= 0 ? "L" : "R";
+        const shoulder = THREE.MathUtils.smoothstep(Math.abs(p.x), 0.125, 0.205)
+          * THREE.MathUtils.smoothstep(p.y, 1.27, 1.36)
+          * (1 - THREE.MathUtils.smoothstep(p.y, 1.45, 1.50));
+        const hip = (1 - THREE.MathUtils.smoothstep(p.y, 0.89, 1.015))
+          * THREE.MathUtils.smoothstep(Math.abs(p.x), 0.015, 0.12) * 0.42;
+        const base = spineWeight(p.y);
+        return pk([...base.indices.map((i, k) => [i, base.weights[k] * (1 - shoulder * 0.65 - hip)]),
+          [bi(`Clavicle_${side}`), shoulder * 0.30],
+          [bi(`UpperArm_${side}`), shoulder * 0.35], [bi(`Thigh_${side}`), hip]]);
+      };
+      const table = [
+        { y: 0.89, rx: 0.179, rz: 0.105, cz: -0.002 },
+        { y: 0.94, rx: 0.185, rz: 0.113, cz: -0.004 },
+        { y: 1.00, rx: 0.162, rz: 0.106, cz: 0 },
+        { y: 1.08, rx: 0.151, rz: 0.102, cz: 0.003 },
+        { y: 1.16, rx: 0.163, rz: 0.111, cz: 0.004 },
+        { y: 1.25, rx: 0.182, rz: 0.120, cz: 0.007 },
+        { y: 1.33, rx: 0.194, rz: 0.119, cz: 0.005 },
+        { y: 1.39, rx: 0.201, rz: 0.108, cz: 0 },
+        { y: 1.45, rx: 0.165, rz: 0.085, cz: -0.003 },
+        { y: 1.50, rx: 0.064, rz: 0.061, cz: 0 },
+        { y: 1.55, rx: 0.055, rz: 0.055, cz: 0.003 },
+        { y: 1.64, rx: 0.058, rz: 0.060, cz: 0.005 },
+      ];
+      const profile = (y) => {
+        for (let i = 0; i < table.length - 1; i++) {
+          const a = table[i], b = table[i + 1];
+          if (y <= b.y) {
+            const t = (y - a.y) / (b.y - a.y);
+            const prev = table[Math.max(0, i - 1)], next = table[Math.min(table.length - 1, i + 2)];
+            const result = {};
+            for (const key of ["rx", "rz", "cz"]) {
+              const m0 = (b[key] - prev[key]) / (b.y - prev.y) * (b.y - a.y);
+              const m1 = (next[key] - a[key]) / (next.y - a.y) * (b.y - a.y);
+              result[key] = (2 * t ** 3 - 3 * t ** 2 + 1) * a[key]
+                + (t ** 3 - 2 * t ** 2 + t) * m0 + (-2 * t ** 3 + 3 * t ** 2) * b[key]
+                + (t ** 3 - t ** 2) * m1;
+            }
+            return result;
+          }
+        }
+        return table[table.length - 1];
+      };
+      const ys = [0.89, 0.91, 0.94, 0.97, 1.00, 1.04, 1.08, 1.12, 1.16, 1.20,
+        1.25, 1.29, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.525, 1.55, 1.585, 1.615, 1.64];
+      const segs = 40;
+      const torso = ys.map((y) => {
+        const p = profile(y);
+        return Array.from({ length: segs }, (_, j) => {
+          const a = j / segs * Math.PI * 2;
+          const x = -Math.cos(a) * p.rx;
+          let z = p.cz + Math.sin(a) * p.rz;
+          if (z < 0) {
+            const rear = Math.pow(Math.max(0, -Math.sin(a)), 3);
+            const fullness = Math.exp(-Math.pow((y - 0.935) / 0.063, 2));
+            const cheeks = Math.exp(-Math.pow((Math.abs(x) - 0.077) / 0.060, 2));
+            const cleft = Math.exp(-Math.pow(x / 0.019, 2));
+            z -= rear * fullness * (0.044 * cheeks - 0.023 * cleft);
+          }
+          const v = new THREE.Vector3(x, y, z);
+          return addVertex(v, torsoWeight(v));
+        });
+      });
+      const wrap = (j) => (j + segs) % segs;
+      const shoulderLo = 12, shoulderHi = 16, halfHole = 2;
+      for (let r = 0; r < torso.length - 1; r++) {
+        for (let j = 0; j < segs; j++) {
+          const hole = r >= shoulderLo && r < shoulderHi
+            && (j < halfHole || j >= segs - halfHole || (j >= 20 - halfHole && j < 20 + halfHole));
+          if (hole) continue;
+          const k = wrap(j + 1);
+          triangle(torso[r][j], torso[r][k], torso[r + 1][j], "torso");
+          triangle(torso[r][k], torso[r + 1][k], torso[r + 1][j], "torso");
+        }
       }
-
-      const pelvisYs = [0.835, 0.855, 0.880, 0.910, 0.945, 0.980, 1.015, 1.045];
-      const pelvisRings = pelvisYs.map((y, idx) => makeRing(y, pelvisTable, 1.0, idx / (pelvisYs.length - 1)));
-      const pelvisShortsGeo = loftRings(pelvisRings, true, true);
-
-      const shirtYs = [
-        { y: 0.992, s: 0.955 }, { y: 0.990, s: 1.008 }, { y: 1.020, s: 1.004 },
-        { y: 1.060, s: 1.000 }, { y: 1.110, s: 1.000 }, { y: 1.160, s: 1.000 },
-        { y: 1.215, s: 1.000 }, { y: 1.270, s: 1.000 }, { y: 1.330, s: 1.000 },
-        { y: 1.380, s: 1.000 }, { y: 1.425, s: 1.000 }, { y: 1.462, s: 1.000 },
-        { y: 1.488, s: 1.005 }, { y: 1.500, s: 0.955 },
-      ];
-      const shirtRings = shirtYs.map((e, idx) => makeRing(e.y, shirtTable, e.s, idx / (shirtYs.length - 1)));
-      const shirtGeo = loftRings(shirtRings, false, false);
-
-      const neckYs = [1.495, 1.525, 1.555, 1.585, 1.615, 1.640];
-      const neckRings = neckYs.map((y, idx) => makeRing(y, neckTable, 1.0, idx / (neckYs.length - 1)));
-      const neckGeo = loftRings(neckRings, false, false);
-
-      return [
-        { geo: pelvisShortsGeo, mat: 2 },
-        { geo: shirtGeo, mat: 1 },
-        { geo: neckGeo, mat: 0 },
-      ];
+      const extendTube = (boundary, defs, slot) => {
+        let previous = boundary;
+        const center = boundary.reduce((v, i) => v.add(point(i)), new THREE.Vector3()).divideScalar(boundary.length);
+        const tangent = defs[0].pos.clone().sub(center).normalize();
+        const axis = slot.startsWith("legs_") ? new THREE.Vector3(1, 0, 0)
+          : new THREE.Vector3().crossVectors(new THREE.Vector3(0, 0, 1), tangent);
+        axis.addScaledVector(tangent, -axis.dot(tangent)).normalize();
+        const angles = boundary.map((i) => {
+          const v = point(i).sub(center);
+          return Math.atan2(v.dot(new THREE.Vector3().crossVectors(tangent, axis)), v.dot(axis));
+        });
+        // Evenly spaced distal rings avoid inheriting a rectangular shoulder opening.
+        const winding = Math.sin(angles[1] - angles[0]) >= 0 ? 1 : -1;
+        for (let r = 0; r < defs.length; r++) {
+          const d = defs[r];
+          const prev = r === 0 ? center : defs[r - 1].pos;
+          const next = defs[Math.min(r + 1, defs.length - 1)].pos;
+          const t = next.clone().sub(prev).normalize();
+          axis.addScaledVector(t, -axis.dot(t)).normalize();
+          const other = new THREE.Vector3().crossVectors(t, axis).normalize();
+          const ring = boundary.map((_, j) => {
+            const regular = angles[0] + winding * j / boundary.length * Math.PI * 2;
+            let a = angles[j];
+            a += Math.round((regular - a) / (Math.PI * 2)) * Math.PI * 2;
+            a = THREE.MathUtils.lerp(a, regular, Math.min(1, (r + 1) / 3));
+            const blend = slot.startsWith("arms_") ? [0.18, 0.55, 0.85, 1][Math.min(r, 3)]
+              : [0.45, 0.75, 1][Math.min(r, 2)];
+            const source = boundary[j];
+            const weight = pk([...d.weight.indices.map((i, k) => [i, d.weight.weights[k] * blend]),
+              ...skinIdx.slice(source * 4, source * 4 + 4).map((i, k) => [i, skinWgt[source * 4 + k] * (1 - blend)])]);
+            return addVertex(d.pos.clone().addScaledVector(axis, Math.cos(a) * d.rx)
+              .addScaledVector(other, Math.sin(a) * d.rz), weight);
+          });
+          bridge(previous, ring, slot, r);
+          previous = ring;
+        }
+        const last = defs[defs.length - 1];
+        const cap = addVertex(last.pos, last.weight);
+        for (let j = 0; j < previous.length; j++) triangle(previous[j], previous[(j + 1) % previous.length], cap, slot, defs.length);
+        return previous;
+      };
+      for (const [side, s, column] of [["L", 1, 20], ["R", -1, 0]]) {
+        const opening = [];
+        for (let j = column - halfHole; j < column + halfHole; j++) opening.push(torso[shoulderLo][wrap(j)]);
+        for (let r = shoulderLo; r < shoulderHi; r++) opening.push(torso[r][wrap(column + halfHole)]);
+        for (let j = column + halfHole; j > column - halfHole; j--) opening.push(torso[shoulderHi][wrap(j)]);
+        for (let r = shoulderHi; r > shoulderLo; r--) opening.push(torso[r][wrap(column - halfHole)]);
+        interfaces[`arm_${side}`] = opening;
+        const upper = rig.worldRest.get(`UpperArm_${side}`);
+        const elbow = rig.worldRest.get(`Forearm_${side}`);
+        const hand = rig.worldRest.get(`Hand_${side}`);
+        const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
+        const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
+        const defs = [
+          [at(upper, elbow, 0.20), 0.059, 0.059, w("Clavicle", "UpperArm", 0.85)],
+          [at(upper, elbow, 0.35), 0.057, 0.056, w("Clavicle", "UpperArm", 1)],
+          [at(upper, elbow, 0.50), 0.052, 0.051, w("UpperArm", "Forearm", 0)],
+          [at(upper, elbow, 0.68), 0.047, 0.047, w("UpperArm", "Forearm", 0.04)],
+          [at(upper, elbow, 0.86), 0.043, 0.043, w("UpperArm", "Forearm", 0.22)],
+          [at(upper, elbow, 0.96), 0.041, 0.041, w("UpperArm", "Forearm", 0.43)],
+          [elbow.clone(), 0.042, 0.042, w("UpperArm", "Forearm", 0.55)],
+          [at(elbow, hand, 0.14), 0.044, 0.043, w("UpperArm", "Forearm", 0.82)],
+          [at(elbow, hand, 0.36), 0.041, 0.040, w("Forearm", "Hand", 0)],
+          [at(elbow, hand, 0.68), 0.032, 0.033, w("Forearm", "Hand", 0.05)],
+          [at(elbow, hand, 0.90), 0.024, 0.030, w("Forearm", "Hand", 0.3)],
+          [hand.clone(), 0.020, 0.035, w("Forearm", "Hand", 0.75)],
+          [hand.clone().add(new THREE.Vector3(s * 0.015, -0.042, 0.004)), 0.016, 0.040, w("Forearm", "Hand", 1)],
+          [hand.clone().add(new THREE.Vector3(s * 0.025, -0.076, 0.006)), 0.010, 0.035, w("Forearm", "Hand", 1)],
+          [hand.clone().add(new THREE.Vector3(s * 0.028, -0.085, 0.007)), 0.003, 0.022, w("Forearm", "Hand", 1)],
+        ].map(([pos, rx, rz, weight]) => ({ pos, rx, rz, weight }));
+        extendTube(opening, defs, `arms_${side}`);
+      }
+      const bottom = torso[0];
+      const crotch = [bottom[10]];
+      for (let j = 1; j < 4; j++) {
+        const t = j / 4;
+        const p = point(bottom[10]).lerp(point(bottom[30]), t);
+        p.y -= Math.sin(t * Math.PI) * 0.042;
+        crotch.push(addVertex(p, pk([[bi("Hips"), 1]])));
+      }
+      crotch.push(bottom[30]);
+      for (const [side, s] of [["L", 1], ["R", -1]]) {
+        const opening = side === "L"
+          ? [...bottom.slice(10, 31), ...crotch.slice(1, -1).reverse()]
+          : [...bottom.slice(30), ...bottom.slice(0, 11), ...crotch.slice(1, -1)];
+        opening.reverse();
+        interfaces[`leg_${side}`] = opening;
+        const thigh = rig.worldRest.get(`Thigh_${side}`);
+        const knee = rig.worldRest.get(`Shin_${side}`);
+        const ankle = rig.worldRest.get(`Foot_${side}`);
+        const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
+        const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
+        const defs = [
+          [at(thigh, knee, 0.15), 0.082, 0.087, pk([[bi("Hips"), 0.22], [bi(`Thigh_${side}`), 0.78]])],
+          [at(thigh, knee, 0.28), 0.079, 0.083, pk([[bi("Hips"), 0.06], [bi(`Thigh_${side}`), 0.94]])],
+          [at(thigh, knee, 0.46), 0.072, 0.076, w("Thigh", "Shin", 0)],
+          [at(thigh, knee, 0.65), 0.065, 0.068, w("Thigh", "Shin", 0)],
+          [at(thigh, knee, 0.84), 0.057, 0.060, w("Thigh", "Shin", 0.14)],
+          [at(thigh, knee, 0.95), 0.053, 0.056, w("Thigh", "Shin", 0.38)],
+          [knee.clone(), 0.053, 0.056, w("Thigh", "Shin", 0.55)],
+          [at(knee, ankle, 0.12), 0.055, 0.058, w("Thigh", "Shin", 0.84)],
+          [at(knee, ankle, 0.30), 0.057, 0.061, w("Shin", "Foot", 0)],
+          [at(knee, ankle, 0.58), 0.046, 0.048, w("Shin", "Foot", 0)],
+          [at(knee, ankle, 0.78), 0.035, 0.039, w("Shin", "Foot", 0.10)],
+          [at(knee, ankle, 0.93), 0.030, 0.036, w("Shin", "Foot", 0.45)],
+          [ankle.clone(), 0.031, 0.037, w("Shin", "Foot", 0.75)],
+          [new THREE.Vector3(ankle.x, 0.045, -0.005), 0.034, 0.037, w("Shin", "Foot", 1)],
+          [new THREE.Vector3(ankle.x, 0.038, 0.042), 0.039, 0.029, w("Foot", "Toe", 0.05)],
+          [new THREE.Vector3(ankle.x, 0.030, 0.087), 0.048, 0.023, w("Foot", "Toe", 0.18)],
+          [new THREE.Vector3(ankle.x, 0.026, 0.121), 0.052, 0.020, w("Foot", "Toe", 0.50)],
+          [new THREE.Vector3(ankle.x, 0.024, 0.138), 0.049, 0.018, w("Foot", "Toe", 0.82)],
+        ].map(([pos, rx, rz, weight]) => ({ pos, rx, rz, weight }));
+        extendTube(opening, defs, `legs_${side}`);
+      }
+      // Vertices inside the shoulder cutouts are intentionally unused; compact them.
+      const used = [...new Set(indices)];
+      const remap = new Map(used.map((i, j) => [i, j]));
+      const take = (array, size) => used.flatMap((i) => array.slice(i * size, (i + 1) * size));
+      const geo = buildGeometryFromArrays(take(positions, 3), take(uvs, 2), take(colors, 3),
+        take(skinIdx, 4), take(skinWgt, 4), indices.map((i) => remap.get(i)));
+      const pAttr = geo.attributes.position;
+      const neighbors = Array.from({ length: pAttr.count }, () => new Set());
+      for (let j = 0; j < geo.index.count; j += 3) {
+        const face = [geo.index.getX(j), geo.index.getX(j + 1), geo.index.getX(j + 2)];
+        for (const a of face) for (const b of face) if (a !== b) neighbors[a].add(b);
+      }
+      const smoothVertices = used.map((_, i) => i).filter((i) => {
+        const y = pAttr.getY(i), x = Math.abs(pAttr.getX(i));
+        return (y > 0.80 && y < 1.015) || (y > 1.28 && y < 1.47 && x > 0.13);
+      });
+      // Local Taubin relaxation rounds the junctions without opening seams or shrinking the body.
+      for (const factor of [0.45, -0.46, 0.45, -0.46, 0.45, -0.46]) {
+        const updates = smoothVertices.map((i) => {
+          const p = new THREE.Vector3().fromBufferAttribute(pAttr, i);
+          const mean = new THREE.Vector3();
+          for (const j of neighbors[i]) mean.add(new THREE.Vector3().fromBufferAttribute(pAttr, j));
+          return p.lerp(mean.divideScalar(neighbors[i].size), factor);
+        });
+        smoothVertices.forEach((i, j) => pAttr.setXYZ(i, updates[j].x, updates[j].y, updates[j].z));
+      }
+      geo.computeVertexNormals();
+      geo.userData.faceSlots = faceSlots;
+      geo.userData.faceBands = faceBands;
+      geo.userData.interfaces = Object.fromEntries(Object.entries(interfaces).map(([name, loop]) =>
+        [name, loop.map((i) => remap.get(i))]));
+      const parts = [{ geo, mat: 0, tag: "body" }];
+      for (const [side, s] of [["L", 1], ["R", -1]]) {
+        parts.push(...buildJointedHand(rig, side, s));
+        const x = rig.worldRest.get(`Foot_${side}`).x;
+        const toes = [
+          { offset: -0.035, radius: 0.0135, length: 0.061 },
+          { offset: -0.010, radius: 0.0105, length: 0.065 },
+          { offset: 0.011, radius: 0.0095, length: 0.057 },
+          { offset: 0.030, radius: 0.0085, length: 0.046 },
+          { offset: 0.046, radius: 0.0070, length: 0.035 },
+        ];
+        toes.forEach((toe, index) => {
+          const defs = [0, 0.25, 0.55, 0.82, 0.95, 1].map((t) => ({
+            pos: new THREE.Vector3(x + s * toe.offset, 0.024 - t * 0.003, 0.128 + t * toe.length),
+            rx: toe.radius * (t === 1 ? 0.12 : 1 - t * 0.3),
+            rz: toe.radius * (t === 1 ? 0.12 : 0.85 - t * 0.2),
+            weight: pk([[bi(`Foot_${side}`), (1 - t) * 0.2], [bi(`Toe_${side}`), 0.8 + t * 0.2]]),
+          }));
+          const toeGeo = buildChainTube(defs, 12, true, true);
+          toeGeo.userData.faceSlots = Array(toeGeo.index.count / 3).fill(`feet_${side}`);
+          parts.push({ geo: toeGeo, mat: 0, tag: `toe_${side}_${index + 1}` });
+        });
+      }
+      return parts;
     }
 
     // --- 2B. Limb Chain Lofting Helper ---
@@ -1026,103 +1220,6 @@
         rings.push({ points: pts, weights: wgts, v: cur.v ?? i / Math.max(1, segmentsDef.length - 1) });
       }
       return loftRings(rings, capStart, capEnd);
-    }
-
-    // --- 2C. Arms, T-Shirt Sleeves & Hands ---
-    function buildArmParts(rig, side, s) {
-      const { boneIndex, worldRest } = rig;
-      const iChest = boneIndex.get("Chest");
-      const iClav = boneIndex.get(`Clavicle_${side}`);
-      const iUpper = boneIndex.get(`UpperArm_${side}`);
-      const iFore = boneIndex.get(`Forearm_${side}`);
-      const iHand = boneIndex.get(`Hand_${side}`);
-      const iFing = boneIndex.get(`Fingers_${side}`);
-      const iThumb = boneIndex.get(`Thumb_${side}`);
-
-      const pUpper = worldRest.get(`UpperArm_${side}`);
-      const pFore = worldRest.get(`Forearm_${side}`);
-      const pHand = worldRest.get(`Hand_${side}`);
-
-      const segPos = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
-
-      const sleeveSpec = [
-        { t: -0.14, rx: 0.028, rz: 0.028, w: [[iChest, 0.55], [iClav, 0.35], [iUpper, 0.10]] },
-        { t: -0.09, rx: 0.048, rz: 0.047, w: [[iChest, 0.38], [iClav, 0.38], [iUpper, 0.24]] },
-        { t: -0.03, rx: 0.062, rz: 0.060, w: [[iChest, 0.20], [iClav, 0.35], [iUpper, 0.45]] },
-        { t: 0.05,  rx: 0.066, rz: 0.064, w: [[iChest, 0.08], [iClav, 0.22], [iUpper, 0.70]] },
-        { t: 0.18,  rx: 0.065, rz: 0.063, w: [[iClav, 0.10], [iUpper, 0.90]] },
-        { t: 0.36,  rx: 0.063, rz: 0.061, w: [[iUpper, 1.0]] },
-        { t: 0.52,  rx: 0.062, rz: 0.060, w: [[iUpper, 1.0]] },
-        { t: 0.54,  rx: 0.064, rz: 0.062, w: [[iUpper, 1.0]] },
-        { t: 0.52,  rx: 0.052, rz: 0.051, w: [[iUpper, 1.0]] },
-      ];
-      const sleeveDefs = sleeveSpec.map((e, idx) => ({
-        pos: segPos(pUpper, pFore, e.t),
-        rx: e.rx,
-        rz: e.rz,
-        weight: normalizeAndPackWeights(e.w),
-        v: idx / (sleeveSpec.length - 1),
-      }));
-      const sleeveGeo = buildChainTube(sleeveDefs, 22, true, false);
-
-      const pdir = new THREE.Vector3(s * 0.30, -0.94, 0.08).normalize();
-      const palmEnd = pHand.clone().add(new THREE.Vector3(s * 0.024, -0.072, 0.006));
-      const armDefs = [
-        { pos: segPos(pUpper, pFore, 0.44), rx: 0.049, rz: 0.049, weight: normalizeAndPackWeights([[iUpper, 1]]) },
-        { pos: segPos(pUpper, pFore, 0.66), rx: 0.047, rz: 0.048, weight: normalizeAndPackWeights([[iUpper, 0.96], [iFore, 0.04]]) },
-        { pos: segPos(pUpper, pFore, 0.86), rx: 0.044, rz: 0.044, weight: normalizeAndPackWeights([[iUpper, 0.78], [iFore, 0.22]]) },
-        { pos: segPos(pUpper, pFore, 0.96), rx: 0.042, rz: 0.042, weight: normalizeAndPackWeights([[iUpper, 0.55], [iFore, 0.45]]) },
-        { pos: pFore.clone(),               rx: 0.043, rz: 0.043, weight: normalizeAndPackWeights([[iUpper, 0.45], [iFore, 0.55]]) },
-        { pos: segPos(pFore, pHand, 0.14),  rx: 0.045, rz: 0.044, weight: normalizeAndPackWeights([[iUpper, 0.18], [iFore, 0.82]]) },
-        { pos: segPos(pFore, pHand, 0.36),  rx: 0.042, rz: 0.041, weight: normalizeAndPackWeights([[iFore, 1]]) },
-        { pos: segPos(pFore, pHand, 0.68),  rx: 0.034, rz: 0.034, weight: normalizeAndPackWeights([[iFore, 0.95], [iHand, 0.05]]) },
-        { pos: segPos(pFore, pHand, 0.92),  rx: 0.026, rz: 0.032, weight: normalizeAndPackWeights([[iFore, 0.65], [iHand, 0.35]]) },
-        { pos: pHand.clone(),               rx: 0.020, rz: 0.036, weight: normalizeAndPackWeights([[iFore, 0.25], [iHand, 0.75]]) },
-        { pos: pHand.clone().add(new THREE.Vector3(s * 0.015, -0.042, 0.004)), rx: 0.016, rz: 0.041, weight: normalizeAndPackWeights([[iHand, 1]]) },
-        { pos: palmEnd.clone(), rx: 0.013, rz: 0.039, weight: normalizeAndPackWeights([[iHand, 1]]) },
-        { pos: palmEnd.clone().addScaledVector(pdir, 0.006), rx: 0.0122, rz: 0.036, weight: normalizeAndPackWeights([[iHand, 1]]) },
-        { pos: palmEnd.clone().addScaledVector(pdir, 0.011), rx: 0.0085, rz: 0.029, weight: normalizeAndPackWeights([[iHand, 1]]) },
-        { pos: palmEnd.clone().addScaledVector(pdir, 0.015), rx: 0.004, rz: 0.018, weight: normalizeAndPackWeights([[iHand, 1]]) },
-      ];
-      const armGeo = buildChainTube(armDefs, 20, true, true);
-
-      const handParts = [];
-      const palmDir = new THREE.Vector3(s * 0.30, -0.94, 0.08).normalize();
-      const palmBase = pHand.clone().addScaledVector(palmDir, 0.072);
-      const palmWidthAxis = new THREE.Vector3(0, 0, 1);
-
-      const fingerSpecs = [
-        { spread: 0.028, len: 0.064, rad: 0.0080 },
-        { spread: 0.009, len: 0.072, rad: 0.0082 },
-        { spread: -0.010, len: 0.066, rad: 0.0078 },
-        { spread: -0.028, len: 0.053, rad: 0.0068 },
-      ];
-      for (const f of fingerSpecs) {
-        const fStart = palmBase.clone().addScaledVector(palmWidthAxis, f.spread).addScaledVector(palmDir, -0.012);
-        const fKnuckle = fStart.clone().addScaledVector(palmDir, 0.016);
-        const fMid = fStart.clone().addScaledVector(palmDir, (f.len + 0.034) * 0.55);
-        const fTip = fStart.clone().addScaledVector(palmDir, f.len + 0.034);
-        const fGeo = buildChainTube([
-          { pos: fStart, rx: f.rad * 1.15, rz: f.rad * 1.15, weight: normalizeAndPackWeights([[iHand, 0.7], [iFing, 0.3]]) },
-          { pos: fKnuckle, rx: f.rad * 1.12, rz: f.rad * 1.12, weight: normalizeAndPackWeights([[iHand, 0.4], [iFing, 0.6]]) },
-          { pos: fMid,   rx: f.rad * 0.9, rz: f.rad * 0.9, weight: normalizeAndPackWeights([[iFing, 1]]) },
-          { pos: fTip,   rx: f.rad * 0.65, rz: f.rad * 0.65, weight: normalizeAndPackWeights([[iFing, 1]]) },
-        ], 10, true, true);
-        handParts.push({ geo: fGeo, mat: 0 });
-      }
-
-      const tStart = pHand.clone().add(new THREE.Vector3(s * 0.006, -0.026, 0.032));
-      const tMid = tStart.clone().add(new THREE.Vector3(s * 0.005, -0.028, 0.024));
-      const tTip = tMid.clone().add(new THREE.Vector3(s * 0.002, -0.024, 0.016));
-      const thumbGeo = buildChainTube([
-        { pos: tStart.clone().addScaledVector(tMid.clone().sub(tStart), -0.9), rx: 0.0125, rz: 0.0125, weight: normalizeAndPackWeights([[iHand, 0.9], [iThumb, 0.1]]) },
-        { pos: tStart, rx: 0.0118, rz: 0.0118, weight: normalizeAndPackWeights([[iHand, 0.5], [iThumb, 0.5]]) },
-        { pos: tMid,   rx: 0.0095, rz: 0.0095, weight: normalizeAndPackWeights([[iThumb, 1]]) },
-        { pos: tTip,   rx: 0.0075, rz: 0.0075, weight: normalizeAndPackWeights([[iThumb, 1]]) },
-      ], 10, true, true);
-      handParts.push({ geo: thumbGeo, mat: 0 });
-
-      return [{ geo: sleeveGeo, mat: 1 }, { geo: armGeo, mat: 0 }, ...buildJointedHand(rig, side, s)];
     }
 
     // --- 2C-2. Anatomical hand: 3-phalanx tapered fingers with knuckle/joint bulges, and a 3-joint thumb ---
@@ -1168,74 +1265,6 @@
       parts.push({ geo: buildChainTube(tdefs, 12, true, true), mat: 0 });
 
       return parts;
-    }
-
-    // --- 2D. Legs, Shorts Legs, Socks & Sneakers ---
-    function buildLegParts(rig, side, s) {
-      const { boneIndex, worldRest } = rig;
-      const iHips = boneIndex.get("Hips");
-      const iThigh = boneIndex.get(`Thigh_${side}`);
-      const iShin = boneIndex.get(`Shin_${side}`);
-      const iFoot = boneIndex.get(`Foot_${side}`);
-      const iToe = boneIndex.get(`Toe_${side}`);
-
-      const pThigh = worldRest.get(`Thigh_${side}`);
-      const pShin = worldRest.get(`Shin_${side}`);
-      const pFoot = worldRest.get(`Foot_${side}`);
-      const pToe = worldRest.get(`Toe_${side}`);
-
-      const segPos = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
-
-      const shortsDefs = [
-        { pos: segPos(pThigh, pShin, -0.02), rx: 0.088, rz: 0.094, weight: normalizeAndPackWeights([[iHips, 0.62], [iThigh, 0.38]]) },
-        { pos: segPos(pThigh, pShin, 0.08),  rx: 0.092, rz: 0.098, weight: normalizeAndPackWeights([[iHips, 0.30], [iThigh, 0.70]]) },
-        { pos: segPos(pThigh, pShin, 0.28),  rx: 0.090, rz: 0.095, weight: normalizeAndPackWeights([[iHips, 0.08], [iThigh, 0.92]]) },
-        { pos: segPos(pThigh, pShin, 0.56),  rx: 0.084, rz: 0.087, weight: normalizeAndPackWeights([[iThigh, 1]]) },
-        { pos: segPos(pThigh, pShin, 0.72),  rx: 0.082, rz: 0.084, weight: normalizeAndPackWeights([[iThigh, 1]]) },
-        { pos: segPos(pThigh, pShin, 0.74),  rx: 0.084, rz: 0.086, weight: normalizeAndPackWeights([[iThigh, 1]]) },
-        { pos: segPos(pThigh, pShin, 0.72),  rx: 0.070, rz: 0.072, weight: normalizeAndPackWeights([[iThigh, 1]]) },
-      ];
-      const shortsGeo = buildChainTube(shortsDefs, 24, true, false);
-
-      const legDefs = [
-        { pos: segPos(pThigh, pShin, 0.62), rx: 0.068, rz: 0.070, weight: normalizeAndPackWeights([[iThigh, 1]]) },
-        { pos: segPos(pThigh, pShin, 0.84), rx: 0.059, rz: 0.061, weight: normalizeAndPackWeights([[iThigh, 0.86], [iShin, 0.14]]) },
-        { pos: segPos(pThigh, pShin, 0.95), rx: 0.055, rz: 0.057, weight: normalizeAndPackWeights([[iThigh, 0.62], [iShin, 0.38]]) },
-        { pos: pShin.clone(),               rx: 0.054, rz: 0.057, weight: normalizeAndPackWeights([[iThigh, 0.45], [iShin, 0.55]]) },
-        { pos: segPos(pShin, pFoot, 0.12),  rx: 0.056, rz: 0.059, weight: normalizeAndPackWeights([[iThigh, 0.16], [iShin, 0.84]]) },
-        { pos: segPos(pShin, pFoot, 0.30),  rx: 0.058, rz: 0.062, weight: normalizeAndPackWeights([[iShin, 1]]) },
-        { pos: segPos(pShin, pFoot, 0.58),  rx: 0.047, rz: 0.049, weight: normalizeAndPackWeights([[iShin, 1]]) },
-        { pos: segPos(pShin, pFoot, 0.76),  rx: 0.041, rz: 0.042, weight: normalizeAndPackWeights([[iShin, 0.95], [iFoot, 0.05]]) },
-      ];
-      const legGeo = buildChainTube(legDefs, 22, true, false);
-
-      const sockDefs = [
-        { pos: segPos(pShin, pFoot, 0.73), rx: 0.043, rz: 0.044, weight: normalizeAndPackWeights([[iShin, 0.96], [iFoot, 0.04]]) },
-        { pos: segPos(pShin, pFoot, 0.88), rx: 0.041, rz: 0.042, weight: normalizeAndPackWeights([[iShin, 0.72], [iFoot, 0.28]]) },
-        { pos: pFoot.clone(),              rx: 0.040, rz: 0.042, weight: normalizeAndPackWeights([[iShin, 0.30], [iFoot, 0.70]]) },
-      ];
-      const sockGeo = buildChainTube(sockDefs, 18, true, true);
-
-      const shoeDefs = [
-        { pos: new THREE.Vector3(pFoot.x, 0.042, pFoot.z - 0.036), rx: 0.045, rz: 0.040, weight: normalizeAndPackWeights([[iFoot, 1]]) },
-        { pos: new THREE.Vector3(pFoot.x, 0.042, pFoot.z + 0.015), rx: 0.048, rz: 0.042, weight: normalizeAndPackWeights([[iFoot, 0.92], [iToe, 0.08]]) },
-        { pos: new THREE.Vector3(pFoot.x, 0.038, pFoot.z + 0.080), rx: 0.051, rz: 0.038, weight: normalizeAndPackWeights([[iFoot, 0.65], [iToe, 0.35]]) },
-        { pos: new THREE.Vector3(pFoot.x, 0.030, pToe.z + 0.025),  rx: 0.048, rz: 0.030, weight: normalizeAndPackWeights([[iFoot, 0.18], [iToe, 0.82]]) },
-        { pos: new THREE.Vector3(pFoot.x, 0.022, pToe.z + 0.072),  rx: 0.038, rz: 0.022, weight: normalizeAndPackWeights([[iToe, 1]]) },
-      ];
-      const shoeGeo = buildChainTube(shoeDefs, 18, true, true);
-      const sp = shoeGeo.attributes.position;
-      for (let i = 0; i < sp.count; i++) {
-        if (sp.getY(i) < 0.008) sp.setY(i, 0.0);
-      }
-      shoeGeo.computeVertexNormals();
-
-      return [
-        { geo: shortsGeo, mat: 2 },
-        { geo: legGeo, mat: 0 },
-        { geo: sockGeo, mat: 7 },
-        { geo: shoeGeo, mat: 8 },
-      ];
     }
 
     // --- 2E. Sculpted Deformable Head, Oral Cavity, Eyes, Eyelids, Ears, Brows & Hair ---
@@ -2689,18 +2718,67 @@
       return merged;
     }
 
+    const CLOTHING_ITEMS = {
+      torso: { none: "None", shirt: "Shirt body", cropped: "Cropped top" },
+      arms: { none: "None", short: "Short sleeves", long: "Long sleeves" },
+      legs: { none: "None", shorts: "Shorts", trousers: "Trousers" },
+      feet: { none: "Bare feet", wraps: "Open-toe foot wraps" },
+    };
+
+    function buildClothingGeometry(bodyParts, slot, item) {
+      const positions = [], normals = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
+      const coveredTriangles = [];
+      let indexOffset = 0;
+      bodyParts.forEach((part) => {
+        const geo = part.geo;
+        const slots = geo.userData.faceSlots;
+        const p = geo.attributes.position, n = geo.attributes.normal;
+        const vertexMap = new Map();
+        if (slots) for (let j = 0; j < geo.index.count; j += 3) {
+          const face = [geo.index.getX(j), geo.index.getX(j + 1), geo.index.getX(j + 2)];
+          const region = slots[j / 3];
+          const band = geo.userData.faceBands?.[j / 3];
+          const y = face.reduce((sum, i) => sum + p.getY(i), 0) / 3;
+          const matches = slot === "torso" ? region === "torso" && y >= (item === "cropped" ? 1.16 : 1.00) && y < 1.50
+            : slot === "arms" ? region.startsWith("arms_") && band <= (item === "short" ? 2 : 10)
+            : slot === "legs" ? (region === "torso" && y < 1.02)
+              || (region.startsWith("legs_") && band <= (item === "shorts" ? 3 : 10))
+            : region.startsWith("legs_") && band >= 11 && band <= 17;
+          if (!matches) continue;
+          coveredTriangles.push(indexOffset + j);
+          for (const i of face) {
+            if (!vertexMap.has(i)) {
+              const v = positions.length / 3;
+              vertexMap.set(i, v);
+              const offset = slot === "torso" || slot === "arms" ? 0.010 : 0.007;
+              positions.push(p.getX(i) + n.getX(i) * offset, p.getY(i) + n.getY(i) * offset, p.getZ(i) + n.getZ(i) * offset);
+              normals.push(n.getX(i), n.getY(i), n.getZ(i));
+              uvs.push(geo.attributes.uv.getX(i), geo.attributes.uv.getY(i));
+              colors.push(1, 1, 1);
+              for (let k = 0; k < 4; k++) {
+                skinIdx.push(geo.attributes.skinIndex.array[i * 4 + k]);
+                skinWgt.push(geo.attributes.skinWeight.array[i * 4 + k]);
+              }
+            }
+            indices.push(vertexMap.get(i));
+          }
+        }
+        indexOffset += geo.index.count;
+      });
+      if (!indices.length) throw new Error(`No geometry for clothing slot ${slot}: ${item}.`);
+      const geo = buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, indices);
+      geo.userData.coveredTriangles = coveredTriangles;
+      // Keep the base normals at openings; recalculating a cut shell makes its hem visibly faceted.
+      geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+      return geo;
+    }
+
     // --- 5. Master Factory: createAdultMaleCharacter(options) ---
     function createAdultMaleCharacter(options = {}) {
       const rig = createHumanoidSkeleton();
       const materials = createProceduralMaterials(options.palette);
 
-      const bodyParts = [
-        ...buildTorsoParts(rig),
-        ...buildArmParts(rig, "L", 1),
-        ...buildArmParts(rig, "R", -1),
-        ...buildLegParts(rig, "L", 1),
-        ...buildLegParts(rig, "R", -1),
-      ];
+      const bodyParts = buildBaseBodyParts(rig);
       const referenceRig = createHumanoidSkeleton();
       const referenceHead = buildHeadAndFaceParts(referenceRig, { transforms: {}, features: {}, strokes: [] });
       const referenceGeometry = mergeCharacterParts([...bodyParts, ...referenceHead]);
@@ -2726,6 +2804,64 @@
       const root = new THREE.Group();
       root.name = "AdultMaleCharacterRoot";
       root.add(skinnedMesh);
+      const clothingRoot = new THREE.Group();
+      clothingRoot.name = "ClothingSlots";
+      root.add(clothingRoot);
+      const clothingSlots = Object.fromEntries(Object.entries(CLOTHING_ITEMS).map(([name, items]) =>
+        [name, { items: { ...items }, item: "none", mesh: null }]));
+      const baseBodyIndices = merged.index.array.slice(0, bodyParts.reduce((sum, part) => sum + part.geo.index.count, 0));
+      const updateClothingCoverage = () => {
+        const index = skinnedMesh.geometry.index;
+        index.array.set(baseBodyIndices);
+        for (const slot of Object.values(clothingSlots)) {
+          if (!slot.mesh) continue;
+          for (const j of slot.mesh.geometry.userData.coveredTriangles) {
+            // Degenerate only covered triangles, preserving group offsets and facial morph topology.
+            index.array[j + 1] = index.array[j + 2] = index.array[j];
+          }
+        }
+        index.needsUpdate = true;
+      };
+      const validateClothing = (slot, item) => {
+        if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot], item)) {
+          throw new Error(`Unknown clothing item ${slot}: ${item}.`);
+        }
+      };
+      function setClothing(slotName, item) {
+        validateClothing(slotName, item);
+        const slot = clothingSlots[slotName];
+        if (slot.item === item) return;
+        let mesh = null;
+        if (item !== "none") {
+          const geo = buildClothingGeometry(bodyParts, slotName, item);
+          const materialIndex = slotName === "legs" ? 2 : slotName === "feet" ? 7 : 1;
+          geo.userData.materialIndex = materialIndex;
+          mesh = new THREE.SkinnedMesh(geo, skinnedMesh.material[materialIndex]);
+          mesh.name = `Clothing_${slotName}_${item}`;
+          mesh.castShadow = mesh.receiveShadow = true;
+          mesh.frustumCulled = false;
+          // Never recalculate inverses in an animated pose: every garment uses the original bind matrix.
+          mesh.bind(rig.skeleton, skinnedMesh.bindMatrix);
+        }
+        if (slot.mesh) {
+          clothingRoot.remove(slot.mesh);
+          slot.mesh.geometry.dispose();
+        }
+        slot.mesh = mesh;
+        slot.item = item;
+        if (mesh) clothingRoot.add(mesh);
+        updateClothingCoverage();
+      }
+      function setOutfit(outfit = {}) {
+        for (const [slot, item] of Object.entries(outfit)) validateClothing(slot, item);
+        for (const slot of Object.keys(clothingSlots)) setClothing(slot, outfit[slot] ?? "none");
+      }
+      function refreshClothingMaterials() {
+        for (const slot of Object.values(clothingSlots)) {
+          if (slot.mesh) slot.mesh.material = skinnedMesh.material[slot.mesh.geometry.userData.materialIndex];
+        }
+      }
+      setOutfit(options.outfit);
 
       const clips = createHumanoidAnimations(rig);
 
@@ -2841,6 +2977,10 @@
         skinnedMesh.morphTargetInfluences = influences;
         root.updateMatrixWorld(true);
         skinnedMesh.bind(rig.skeleton);
+        for (const slot of Object.values(clothingSlots)) {
+          if (slot.mesh) slot.mesh.bind(rig.skeleton, skinnedMesh.bindMatrix);
+        }
+        updateClothingCoverage();
         for (const bone of rig.bones) bone.quaternion.copy(restLocalQuat.get(bone.name));
         // Rebinding also refreshes the mixer's saved original pose used during expression fade-outs.
         if (retargetFace) {
@@ -3125,11 +3265,12 @@
       };
 
       return {
-        root, skinnedMesh, rig, clips,
+        root, skinnedMesh, rig, clips, bodyParts, clothingRoot, clothingSlots,
         mixers: { base: baseMixer, upper: upperMixer, face: faceMixer },
         faceSliders, physicsDescriptor,
         setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink, update,
         headDesign: structuredClone(headParts.design), createHeadPreview, commitHeadPreview,
+        setClothing, setOutfit, refreshClothingMaterials,
       };
     }
 
@@ -3203,6 +3344,7 @@
 
     const character = createAdultMaleCharacter();
     scene.add(character.root);
+    window.proceduralHuman = { character, createAdultMaleCharacter };
 
     const vertCount = character.skinnedMesh.geometry.attributes.position.count;
     const triCount = character.skinnedMesh.geometry.index.count / 3;
@@ -3266,7 +3408,52 @@
     updateRapierVisual("idle");
 
     // --- UI Event Wiring ---
-    const materialNames = ["Body Skin", "T-Shirt", "Shorts", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Socks", "Sneakers", "Mouth / Tongue"];
+    const clothingStatus = document.getElementById("clothingStatus");
+    const clothingControls = document.getElementById("clothingControls");
+    const clothingSelects = {};
+    const syncClothingControls = () => {
+      for (const [name, slot] of Object.entries(character.clothingSlots)) clothingSelects[name].value = slot.item;
+      const dressed = Object.values(character.clothingSlots).filter((slot) => slot.item !== "none").length;
+      clothingStatus.textContent = dressed ? `${dressed} removable clothing layers equipped.` : "All clothing slots empty.";
+    };
+    const changeClothing = (change) => {
+      try {
+        if (headEditing) setHeadEditing(false);
+        change();
+        syncClothingControls();
+      } catch (error) {
+        console.error("Could not change clothing.", error);
+        clothingStatus.textContent = error.message;
+      }
+    };
+    for (const [name, slot] of Object.entries(character.clothingSlots)) {
+      const label = document.createElement("label");
+      label.className = "flex items-center justify-between gap-2";
+      const title = document.createElement("span");
+      title.textContent = name[0].toUpperCase() + name.slice(1);
+      const select = document.createElement("select");
+      select.id = `clothing-${name}`;
+      select.className = "w-44 bg-slate-800 border border-slate-700 rounded-lg p-1.5";
+      for (const [value, text] of Object.entries(slot.items)) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        select.appendChild(option);
+      }
+      select.addEventListener("change", () => changeClothing(() => character.setClothing(name, select.value)));
+      clothingSelects[name] = select;
+      label.append(title, select);
+      clothingControls.appendChild(label);
+    }
+    const outfits = {
+      base: {},
+      casual: { torso: "shirt", arms: "short", legs: "shorts" },
+      long: { torso: "shirt", arms: "long", legs: "trousers", feet: "wraps" },
+    };
+    document.querySelectorAll("[data-outfit]").forEach((button) => {
+      button.addEventListener("click", () => changeClothing(() => character.setOutfit(outfits[button.dataset.outfit])));
+    });
+    const materialNames = ["Body Skin", "Tops / Sleeves", "Shorts / Trousers", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Foot Wraps", "Clothing Trim (reserved)", "Mouth / Tongue"];
     const textureKeys = ["skin", "shirt", "shorts", "hair", null, "skin", null, null, null, null];
     const surfaceDefs = [
       ["roughness", "Roughness", 0, 1, 0.01],
@@ -3334,6 +3521,7 @@
       const wireframe = document.getElementById("wireframeToggle").checked;
       nextMaterials.forEach((material) => { material.wireframe = wireframe; });
       character.skinnedMesh.material = nextMaterials;
+      character.refreshClothingMaterials();
       if (headPreviewMesh) headPreviewMesh.material = nextMaterials;
       const textures = new Set();
       previousMaterials.forEach((material) => {
@@ -3599,6 +3787,7 @@
         };
         headEditing = true;
         character.skinnedMesh.visible = false;
+        character.clothingRoot.visible = false;
         heldProp.visible = reachOrb.visible = skeletonHelper.visible = rapierMesh.visible = false;
         controls.mouseButtons.LEFT = headBrush.value === "orbit" ? THREE.MOUSE.ROTATE : null;
         controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
@@ -3612,6 +3801,7 @@
         character.headDesign = structuredClone(headDesign);
         headEditing = false;
         character.skinnedMesh.visible = true;
+        character.clothingRoot.visible = true;
         character.root.remove(headPreviewMesh);
         disposeHeadPreview(headPreview);
         headPreview = headPreviewMesh = null;
