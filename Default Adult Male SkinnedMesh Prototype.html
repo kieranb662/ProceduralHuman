@@ -57,10 +57,11 @@
       <button id="closePanelBtn" class="md:hidden text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800">Close</button>
     </div>
 
-    <div class="grid grid-cols-3 gap-1.5 p-3 border-b border-slate-800">
+    <div class="grid grid-cols-4 gap-1.5 p-3 border-b border-slate-800">
       <button id="rigTabBtn" aria-pressed="true" class="py-2 text-xs rounded-xl bg-sky-500 text-slate-950">Rig &amp; Animation</button>
       <button id="materialsTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Materials</button>
       <button id="headTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Head Sculpt</button>
+      <button id="torsoTabBtn" aria-controls="torsoTools" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Torso Sculpt</button>
     </div>
     <div id="rigTools" class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
       <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2">
@@ -220,6 +221,22 @@
           Rapier Capsule: r=0.28m, hh=0.61m (H=1.78m)
         </div>
       </section>
+    </div>
+    <div id="torsoTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Torso Anatomy</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Enable each detail independently and adjust its shape live. Use Base body in Rig &amp; Animation to see details without clothing.</p>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button id="torsoFrontBtn" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Front View</button>
+          <button id="torsoRearBtn" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Rear View</button>
+        </div>
+      </section>
+      <div id="torsoControls" class="space-y-3"></div>
+      <button id="resetTorsoBtn" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Reset Torso</button>
+      <details class="text-[10px] text-slate-400 select-text">
+        <summary class="cursor-pointer">Torso API</summary>
+        <p class="mt-1 leading-relaxed">window.proceduralHuman.character.setTorsoDetails({ pectorals: { enabled: true, depth: 25 } }) applies a partial update. Read torsoDetails for the current settings or call resetTorsoDetails() to restore defaults.</p>
+      </details>
     </div>
     <div id="headTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
       <section class="space-y-3">
@@ -902,6 +919,96 @@
       return geo;
     }
 
+    const TORSO_DETAILS = {
+      pectorals: { label: "Pectoral muscles", enabled: false, sliders: [
+        ["depth", "Projection (mm)", 0, 38, 1, 23],
+        ["width", "Width (%)", 75, 125, 1, 100],
+      ] },
+      collarbones: { label: "Collarbones", enabled: false, sliders: [
+        ["depth", "Relief (mm)", 0, 17, 1, 10],
+        ["sharpness", "Sharpness (%)", 0, 100, 1, 50],
+      ] },
+      abdominals: { label: "Abdominal muscles", enabled: false, sliders: [
+        ["depth", "Relief (mm)", 0, 24, 1, 14],
+        ["width", "Width (%)", 75, 125, 1, 100],
+      ] },
+      buttocks: { label: "Buttocks", enabled: true, sliders: [
+        ["depth", "Fullness (mm)", 0, 65, 1, 44],
+        ["width", "Width (%)", 70, 135, 1, 100],
+        ["cleft", "Cleft depth (mm)", 0, 30, 1, 23],
+      ] },
+    };
+
+    function configureTorsoDetails(current, changes = {}) {
+      for (const [key, values] of Object.entries(changes)) {
+        if (!Object.hasOwn(TORSO_DETAILS, key) || !values || typeof values !== "object" || Array.isArray(values)) {
+          throw new Error(`Invalid torso detail: ${key}.`);
+        }
+        for (const [name, value] of Object.entries(values)) {
+          const slider = TORSO_DETAILS[key].sliders.find(([id]) => id === name);
+          if (name === "enabled" ? typeof value !== "boolean"
+            : !slider || !Number.isFinite(value) || value < slider[2] || value > slider[3]) {
+            throw new Error(`Invalid torso detail parameter: ${key}.${name}.`);
+          }
+        }
+      }
+      return Object.fromEntries(Object.entries(TORSO_DETAILS).map(([key, { enabled, sliders }]) => [
+        key, { enabled, ...Object.fromEntries(sliders.map(([name, , , , , value]) => [name, value])),
+          ...current?.[key], ...changes[key] },
+      ]));
+    }
+
+    function sculptTorso(geo, rest, { pectorals, collarbones, abdominals, buttocks }) {
+      const pos = geo.attributes.position;
+      const bell = (t) => Math.exp(-(t ** 2));
+      const taper = (v, lo, start, end, hi) => smoothstep(lo, start, v) * (1 - smoothstep(end, hi, v));
+      for (let i = 0; i < rest.length; i += 3) {
+        const x = Math.abs(rest[i]), y = rest[i + 1], z = rest[i + 2];
+        let dz = 0;
+        if (z > 0.015 && y > 0.98 && y < 1.51) {
+          const front = smoothstep(0.015, 0.085, z);
+          if (pectorals.enabled) {
+            const u = (x - 0.087) / (0.068 * pectorals.width / 100);
+            const v = y - (1.326 + 0.20 * (x - 0.087));
+            const plate = bell(u) * bell(v / (v < 0 ? 0.044 : 0.064));
+            const lowerEdge = bell(u) * bell((v + 0.046) / 0.015);
+            dz += pectorals.depth * (plate - 0.28 * lowerEdge)
+              * taper(x, 0, 0.028, 0.118, 0.176) * taper(y, 1.22, 1.27, 1.38, 1.443);
+          }
+          if (collarbones.enabled) {
+            const along = THREE.MathUtils.clamp((x - 0.016) / 0.138, 0, 1);
+            const ridgeY = 1.445 + 0.022 * along + 0.007 * Math.sin(along * Math.PI);
+            const ridgeWidth = THREE.MathUtils.lerp(0.022, 0.009, collarbones.sharpness / 100);
+            const ridge = bell((y - ridgeY) / ridgeWidth);
+            const hollow = bell((y - ridgeY + 0.031) / 0.018);
+            dz += collarbones.depth * (ridge - 0.60 * hollow)
+              * taper(x, 0, 0.027, 0.124, 0.167) * taper(y, 1.39, 1.42, 1.475, 1.51);
+          }
+          if (abdominals.enabled) {
+            const w = abdominals.width / 100;
+            const centerX = THREE.MathUtils.lerp(0.042, 0.051, smoothstep(1.05, 1.24, y)) * w;
+            const pair = bell((x - centerX) / (0.039 * w)) * smoothstep(0, 0.022 * w, x);
+            const separations = bell((y - 1.126 - 0.12 * x) / 0.013)
+              + bell((y - 1.196 - 0.09 * x) / 0.013);
+            dz += abdominals.depth * pair * (1 - 0.75 * separations)
+              * taper(y, 0.98, 1.079, 1.239, 1.283) * (1 - smoothstep(0.09 * w, 0.13 * w, x));
+          }
+          dz *= front;
+        } else if (buttocks.enabled && z < -0.015 && y > 0.825 && y < 1.075) {
+          const rear = smoothstep(0.015, 0.102, -z);
+          const w = buttocks.width / 100;
+          const fullness = bell((y - 0.935) / 0.063) * taper(y, 0.825, 0.89, 0.99, 1.075);
+          const cheeks = bell((x - 0.077 * w) / (0.060 * w));
+          const cleft = bell(x / 0.019);
+          dz -= rear * fullness * (buttocks.depth * cheeks - buttocks.cleft * cleft);
+        }
+        pos.array[i + 2] = z + dz * 0.001;
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      geo.boundingBox = geo.boundingSphere = null;
+    }
+
     // Shared indices, not overlapping caps, join the shoulders and bifurcated pelvis.
     function buildBaseBodyParts(rig) {
       const bi = (name) => rig.boneIndex.get(name);
@@ -989,32 +1096,41 @@
         }
         return table[table.length - 1];
       };
-      const ys = [0.89, 0.91, 0.94, 0.97, 1.00, 1.04, 1.08, 1.12, 1.16, 1.20,
+      const baseYs = [0.89, 0.91, 0.94, 0.97, 1.00, 1.04, 1.08, 1.12, 1.16, 1.20,
         1.25, 1.29, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.525, 1.55, 1.585, 1.615, 1.64];
-      const segs = 40;
-      const torso = ys.map((y) => {
+      const ys = baseYs.flatMap((y, i) => {
+        if (y >= 1.50 || (y >= 1.33 && y < 1.45)) return [y];
+        const dy = baseYs[i + 1] - y;
+        const steps = Math.ceil(dy / 0.012);
+        return Array.from({ length: steps }, (_, j) => y + dy * j / steps);
+      });
+      const coarseSegs = 40;
+      const halfHole = 2;
+      const inShoulder = (j) => (j + halfHole) % (coarseSegs / 2) < halfHole * 2;
+      const columns = Array.from({ length: coarseSegs }, (_, j) => inShoulder(j) ? [j] : [j, j + 0.5]).flat();
+      const coarseToFine = Array.from({ length: coarseSegs }, (_, j) => columns.indexOf(j));
+      const segs = columns.length;
+      const torso = ys.map((y, r) => {
         const p = profile(y);
-        return Array.from({ length: segs }, (_, j) => {
-          const a = j / segs * Math.PI * 2;
-          const x = -Math.cos(a) * p.rx;
-          let z = p.cz + Math.sin(a) * p.rz;
-          if (z < 0) {
-            const rear = Math.pow(Math.max(0, -Math.sin(a)), 3);
-            const fullness = Math.exp(-Math.pow((y - 0.935) / 0.063, 2));
-            const cheeks = Math.exp(-Math.pow((Math.abs(x) - 0.077) / 0.060, 2));
-            const cleft = Math.exp(-Math.pow(x / 0.019, 2));
-            z -= rear * fullness * (0.044 * cheeks - 0.023 * cleft);
-          }
-          const v = new THREE.Vector3(x, y, z);
+        return (r ? columns : coarseToFine.map((j) => columns[j])).map((j) => {
+          const a = j / coarseSegs * Math.PI * 2;
+          const v = new THREE.Vector3(-Math.cos(a) * p.rx, y, p.cz + Math.sin(a) * p.rz);
           return addVertex(v, torsoWeight(v));
         });
       });
       const wrap = (j) => (j + segs) % segs;
-      const shoulderLo = 12, shoulderHi = 16, halfHole = 2;
-      for (let r = 0; r < torso.length - 1; r++) {
+      const shoulderLo = ys.indexOf(1.33), shoulderHi = ys.indexOf(1.45);
+      // Stitch the dense torso to the original pelvis ring without changing its leg loops.
+      for (let j = 0; j < coarseSegs; j++) {
+        const k = (j + 1) % coarseSegs;
+        const a = coarseToFine[j], b = coarseToFine[k], mid = wrap(a + 1);
+        triangle(torso[0][j], torso[0][k], torso[1][a], "torso");
+        if (mid !== b) triangle(torso[0][k], torso[1][mid], torso[1][a], "torso");
+        triangle(torso[0][k], torso[1][b], torso[1][mid === b ? a : mid], "torso");
+      }
+      for (let r = 1; r < torso.length - 1; r++) {
         for (let j = 0; j < segs; j++) {
-          const hole = r >= shoulderLo && r < shoulderHi
-            && (j < halfHole || j >= segs - halfHole || (j >= 20 - halfHole && j < 20 + halfHole));
+          const hole = r >= shoulderLo && r < shoulderHi && inShoulder(columns[j]);
           if (hole) continue;
           const k = wrap(j + 1);
           triangle(torso[r][j], torso[r][k], torso[r + 1][j], "torso");
@@ -1064,7 +1180,7 @@
         for (let j = 0; j < previous.length; j++) triangle(previous[j], previous[(j + 1) % previous.length], cap, slot, defs.length);
         return previous;
       };
-      for (const [side, s, column] of [["L", 1, 20], ["R", -1, 0]]) {
+      for (const [side, s, column] of [["L", 1, coarseToFine[20]], ["R", -1, 0]]) {
         const opening = [];
         for (let j = column - halfHole; j < column + halfHole; j++) opening.push(torso[shoulderLo][wrap(j)]);
         for (let r = shoulderLo; r < shoulderHi; r++) opening.push(torso[r][wrap(column + halfHole)]);
@@ -2020,8 +2136,8 @@
       const nTmp = new THREE.Vector3();
 
       for (const shapeName of FACS_MORPH_NAMES) {
-        const pArr = new Float32Array(editedPos.array);
-        const nArr = new Float32Array(normAttr.array);
+        const pArr = new Float32Array(editedPos.array.length);
+        const nArr = new Float32Array(normAttr.array.length);
 
         for (const vi of headVertSet) {
           const x = posAttr.getX(vi);
@@ -2096,18 +2212,18 @@
           if (dx !== 0 || dy !== 0 || dz !== 0) {
             const scale = vi >= cavMin + lipRimCount && vi - cavMin < ORAL_LOFT_VERTS ? cavityScale : headScale;
             dx *= scale.x; dy *= scale.y; dz *= scale.z;
-            pArr[vi * 3] = editedPos.getX(vi) + dx;
-            pArr[vi * 3 + 1] = editedPos.getY(vi) + dy;
-            pArr[vi * 3 + 2] = editedPos.getZ(vi) + dz;
+            pArr[vi * 3] = dx;
+            pArr[vi * 3 + 1] = dy;
+            pArr[vi * 3 + 2] = dz;
 
             nTmp.set(
               normAttr.getX(vi) + dx * 18,
               normAttr.getY(vi) + dy * 18,
               normAttr.getZ(vi) + dz * 18
             ).normalize();
-            nArr[vi * 3] = nTmp.x;
-            nArr[vi * 3 + 1] = nTmp.y;
-            nArr[vi * 3 + 2] = nTmp.z;
+            nArr[vi * 3] = nTmp.x - normAttr.getX(vi);
+            nArr[vi * 3 + 1] = nTmp.y - normAttr.getY(vi);
+            nArr[vi * 3 + 2] = nTmp.z - normAttr.getZ(vi);
           }
         }
 
@@ -2121,6 +2237,8 @@
 
       mergedGeo.morphAttributes.position = morphPosAttrs;
       mergedGeo.morphAttributes.normal = morphNormAttrs;
+      // Facial morphs must not pull a sculpted torso back toward its original surface.
+      mergedGeo.morphTargetsRelative = true;
     }
 
     function buildEyelidShell(center, radius, isTop, boneIdx) {
@@ -2748,8 +2866,9 @@
 
     function buildClothingGeometry(bodyParts, slot, item) {
       const positions = [], normals = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
-      const coveredTriangles = [];
-      let indexOffset = 0;
+      const coveredTriangles = [], sourceVertices = [];
+      const offset = slot === "torso" || slot === "arms" ? 0.010 : 0.007;
+      let indexOffset = 0, vertexOffset = 0;
       bodyParts.forEach((part) => {
         const geo = part.geo;
         const slots = geo.userData.faceSlots;
@@ -2771,7 +2890,7 @@
             if (!vertexMap.has(i)) {
               const v = positions.length / 3;
               vertexMap.set(i, v);
-              const offset = slot === "torso" || slot === "arms" ? 0.010 : 0.007;
+              sourceVertices.push(vertexOffset + i);
               positions.push(p.getX(i) + n.getX(i) * offset, p.getY(i) + n.getY(i) * offset, p.getZ(i) + n.getZ(i) * offset);
               normals.push(n.getX(i), n.getY(i), n.getZ(i));
               uvs.push(geo.attributes.uv.getX(i), geo.attributes.uv.getY(i));
@@ -2785,13 +2904,29 @@
           }
         }
         indexOffset += geo.index.count;
+        vertexOffset += p.count;
       });
       if (!indices.length) throw new Error(`No geometry for clothing slot ${slot}: ${item}.`);
       const geo = buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, indices);
       geo.userData.coveredTriangles = coveredTriangles;
+      geo.userData.sourceVertices = sourceVertices;
+      geo.userData.surfaceOffset = offset;
       // Keep the base normals at openings; recalculating a cut shell makes its hem visibly faceted.
       geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
       return geo;
+    }
+
+    function fitClothingToBody(geo, body) {
+      const { sourceVertices, surfaceOffset } = geo.userData;
+      const { position, normal } = geo.attributes;
+      const { position: p, normal: n } = body.attributes;
+      sourceVertices.forEach((j, i) => {
+        const x = n.getX(j), y = n.getY(j), z = n.getZ(j);
+        position.setXYZ(i, p.getX(j) + x * surfaceOffset, p.getY(j) + y * surfaceOffset, p.getZ(j) + z * surfaceOffset);
+        normal.setXYZ(i, x, y, z);
+      });
+      position.needsUpdate = normal.needsUpdate = true;
+      geo.boundingBox = geo.boundingSphere = null;
     }
 
     // --- 5. Master Factory: createAdultMaleCharacter(options) ---
@@ -2800,6 +2935,10 @@
       const materials = createProceduralMaterials(options.palette);
 
       const bodyParts = buildBaseBodyParts(rig);
+      const bodyGeo = bodyParts[0].geo;
+      const neutralBody = bodyGeo.attributes.position.array.slice();
+      let torsoDetails = configureTorsoDetails(null, options.torsoDetails);
+      sculptTorso(bodyGeo, neutralBody, torsoDetails);
       const referenceRig = createHumanoidSkeleton();
       const referenceHead = buildHeadAndFaceParts(referenceRig, { transforms: {}, features: {}, strokes: [] });
       const referenceGeometry = mergeCharacterParts([...bodyParts, ...referenceHead]);
@@ -2830,6 +2969,31 @@
       root.add(clothingRoot);
       const clothingSlots = Object.fromEntries(Object.entries(CLOTHING_ITEMS).map(([name, items]) =>
         [name, { items: { ...items }, item: "none", mesh: null }]));
+      function copyBodySurface(geometry) {
+        for (const name of ["position", "normal"]) {
+          geometry.attributes[name].array.set(bodyGeo.attributes[name].array);
+          geometry.attributes[name].needsUpdate = true;
+        }
+        geometry.boundingBox = geometry.boundingSphere = null;
+      }
+      function applyTorsoDetails(next) {
+        sculptTorso(bodyGeo, neutralBody, next);
+        torsoDetails = next;
+        copyBodySurface(skinnedMesh.geometry);
+        skinnedMesh.boundingBox = skinnedMesh.boundingSphere = null;
+        for (const slot of Object.values(clothingSlots)) {
+          if (slot.mesh) {
+            fitClothingToBody(slot.mesh.geometry, skinnedMesh.geometry);
+            slot.mesh.boundingBox = slot.mesh.boundingSphere = null;
+          }
+        }
+      }
+      function setTorsoDetails(changes) {
+        applyTorsoDetails(configureTorsoDetails(torsoDetails, changes));
+      }
+      function resetTorsoDetails() {
+        applyTorsoDetails(configureTorsoDetails());
+      }
       const baseBodyIndices = merged.index.array.slice(0, bodyParts.reduce((sum, part) => sum + part.geo.index.count, 0));
       const updateClothingCoverage = () => {
         const index = skinnedMesh.geometry.index;
@@ -2961,6 +3125,7 @@
 
       function commitHeadPreview(preview) {
         const geometry = preview.geometry.clone();
+        copyBodySurface(geometry);
         buildFacialMorphTargets(geometry, referenceRig, headGroupIdx, cavGroupIdx, referenceGeometry, preview.parts.design);
         const deltas = new Map();
         for (const bone of rig.bones) {
@@ -3306,6 +3471,8 @@
         setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink, update,
         headDesign: structuredClone(headParts.design), createHeadPreview, commitHeadPreview,
         setClothing, setOutfit, refreshClothingMaterials,
+        get torsoDetails() { return structuredClone(torsoDetails); },
+        setTorsoDetails, resetTorsoDetails,
       };
     }
 
@@ -3575,7 +3742,7 @@
       updateMaterialSource();
     }
 
-    function addMaterialSlider(container, key, labelText, min, max, step, value, onInput, idPrefix = "material") {
+    function addParameterSlider(container, key, labelText, min, max, step, value, onInput, idPrefix = "material") {
       const label = document.createElement("label");
       label.className = "block";
       const caption = document.createElement("div");
@@ -3583,7 +3750,9 @@
       const title = document.createElement("span");
       title.textContent = labelText;
       const output = document.createElement("span");
-      output.textContent = value.toFixed(2);
+      output.setAttribute("aria-hidden", "true");
+      const format = (v) => idPrefix.startsWith("torso-") ? String(v) : v.toFixed(2);
+      output.textContent = format(value);
       caption.append(title, output);
       const input = document.createElement("input");
       input.type = "range";
@@ -3595,12 +3764,64 @@
       input.className = "w-full";
       input.addEventListener("input", () => {
         const value = Number(input.value);
-        output.textContent = value.toFixed(2);
+        output.textContent = format(value);
         onInput(value);
       });
       label.append(caption, input);
       container.appendChild(label);
     }
+
+    const torsoTools = document.getElementById("torsoTools");
+    const torsoControls = document.getElementById("torsoControls");
+    let pendingTorsoChanges = {};
+    let torsoUpdateFrame = null;
+    function scheduleTorsoUpdate(group, key, value) {
+      (pendingTorsoChanges[group] ??= {})[key] = value;
+      if (torsoUpdateFrame !== null) return;
+      torsoUpdateFrame = requestAnimationFrame(() => {
+        const changes = pendingTorsoChanges;
+        pendingTorsoChanges = {};
+        torsoUpdateFrame = null;
+        character.setTorsoDetails(changes);
+      });
+    }
+    function showTorsoControls() {
+      const settings = character.torsoDetails;
+      torsoControls.replaceChildren();
+      for (const [group, { label, sliders }] of Object.entries(TORSO_DETAILS)) {
+        const section = document.createElement("section");
+        section.className = "bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2";
+        const toggleLabel = document.createElement("label");
+        toggleLabel.className = "flex items-center gap-2 font-semibold text-slate-200 cursor-pointer";
+        const toggle = document.createElement("input");
+        toggle.id = `torso-${group}-enabled`;
+        toggle.type = "checkbox";
+        toggle.checked = settings[group].enabled;
+        const fields = document.createElement("fieldset");
+        fields.className = "space-y-2 disabled:opacity-50";
+        fields.setAttribute("aria-label", label);
+        fields.disabled = !toggle.checked;
+        toggle.addEventListener("change", () => {
+          fields.disabled = !toggle.checked;
+          scheduleTorsoUpdate(group, "enabled", toggle.checked);
+        });
+        toggleLabel.append(toggle, label);
+        for (const [key, title, min, max, step] of sliders) {
+          addParameterSlider(fields, key, title, min, max, step, settings[group][key],
+            (value) => scheduleTorsoUpdate(group, key, value), `torso-${group}`);
+        }
+        section.append(toggleLabel, fields);
+        torsoControls.appendChild(section);
+      }
+    }
+    showTorsoControls();
+    document.getElementById("resetTorsoBtn").addEventListener("click", () => {
+      if (torsoUpdateFrame !== null) cancelAnimationFrame(torsoUpdateFrame);
+      torsoUpdateFrame = null;
+      pendingTorsoChanges = {};
+      character.resetTorsoDetails();
+      showTorsoControls();
+    });
 
     function showMaterialControls() {
       const index = Number(materialSlot.value);
@@ -3613,14 +3834,14 @@
       surfaceControls.replaceChildren();
       if (textureKey) {
         const detailKey = textureKey === "skin" ? "skinDetail" : `${textureKey}Contrast`;
-        addMaterialSlider(textureControls, detailKey, textureKey === "skin" ? "Pores / tone detail" : "Texture contrast",
+        addParameterSlider(textureControls, detailKey, textureKey === "skin" ? "Pores / tone detail" : "Texture contrast",
           0, textureKey === "shirt" || textureKey === "shorts" ? 1 : 2, 0.01, materialPalette.textures[detailKey], (value) => {
             materialPalette.textures[detailKey] = value;
             scheduleMaterialRefresh();
           });
         for (const axis of ["X", "Y"]) {
           const key = `${textureKey}Repeat${axis}`;
-          addMaterialSlider(textureControls, key, `Texture tiling ${axis}`, 1, 30, 0.1, materialPalette.textures[key], (value) => {
+          addParameterSlider(textureControls, key, `Texture tiling ${axis}`, 1, 30, 0.1, materialPalette.textures[key], (value) => {
             materialPalette.textures[key] = value;
             character.skinnedMesh.material.forEach((material, slot) => {
               if (textureKeys[slot] === textureKey) {
@@ -3635,7 +3856,7 @@
       }
       for (const [key, label, min, max, step] of surfaceDefs) {
         if (!(key in materialPalette.materials[index])) continue;
-        addMaterialSlider(surfaceControls, key, label, min, max, step, materialPalette.materials[index][key], (value) => {
+        addParameterSlider(surfaceControls, key, label, min, max, step, materialPalette.materials[index][key], (value) => {
           materialPalette.materials[index][key] = value;
           character.skinnedMesh.material[index].setValues({ [key]: value });
           updateMaterialSource();
@@ -3690,7 +3911,8 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       materialStatus.textContent = "Function exported.";
     });
-    const toolTabs = [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"], ["headTabBtn", "headTools"]];
+    const toolTabs = [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"],
+      ["headTabBtn", "headTools"], ["torsoTabBtn", "torsoTools"]];
     for (const [tabId] of toolTabs) {
       document.getElementById(tabId).addEventListener("click", () => {
         try { setHeadEditing(tabId === "headTabBtn"); } catch (error) { reportHeadError(error); return; }
@@ -3704,6 +3926,7 @@
           button.classList.toggle("bg-slate-800", !active);
           button.classList.toggle("text-slate-200", !active);
         }
+        resizePreviewViewport();
       });
     }
     showMaterialControls();
@@ -3891,7 +4114,7 @@
         ["sz", "Depth", 0.7, 1.3, 0.01, 1], ["x", "Horizontal offset (mm)", -30, 30, 0.5, 0],
         ["y", "Vertical offset (mm)", -30, 30, 0.5, 0], ["z", "Forward offset (mm)", -30, 30, 0.5, 0],
       ]) {
-        addMaterialSlider(transforms, key, label, min, max, step, transform[key] ?? defaultValue, (value) => {
+        addParameterSlider(transforms, key, label, min, max, step, transform[key] ?? defaultValue, (value) => {
           beginHeadSlider();
           headDesign.transforms[target] ??= {};
           headDesign.transforms[target][key] = value;
@@ -3902,7 +4125,7 @@
         ["forehead", "Forehead fullness"], ["noseWidth", "Nose wing width"], ["noseTip", "Nose projection"],
         ["cheeks", "Cheek fullness"], ["jawWidth", "Jaw width"], ["chin", "Chin projection"], ["lips", "Lip fullness"],
       ]) {
-        addMaterialSlider(features, key, `${label} (mm)`, -10, 10, 0.25, headDesign.features[key] ?? 0, (value) => {
+        addParameterSlider(features, key, `${label} (mm)`, -10, 10, 0.25, headDesign.features[key] ?? 0, (value) => {
           beginHeadSlider();
           headDesign.features[key] = value;
           scheduleHeadPreview();
@@ -4233,6 +4456,8 @@
     document.getElementById("camFullBtn").addEventListener("click", () => setCameraView([0.35, 1.35, 3.05], [0, 0.96, 0], "camFullBtn"));
     document.getElementById("camFaceBtn").addEventListener("click", () => setCameraView([0.08, 1.66, 0.58], [0, 1.64, 0.04], "camFaceBtn"));
     document.getElementById("camHandsBtn").addEventListener("click", () => setCameraView([0.62, 1.06, 0.72], [0.58, 1.01, 0.0], "camHandsBtn"));
+    document.getElementById("torsoFrontBtn").addEventListener("click", () => setCameraView([0.19, 1.33, 1.28], [0, 1.22, 0.03]));
+    document.getElementById("torsoRearBtn").addEventListener("click", () => setCameraView([0.24, 1.18, -1.17], [0, 1.09, -0.04]));
 
     document.getElementById("showSkeletonToggle").addEventListener("change", (e) => {
       skeletonHelper.visible = e.target.checked;
@@ -4255,7 +4480,8 @@
     });
 
     function resizePreviewViewport() {
-      container.style.width = headEditing && window.matchMedia("(min-width: 768px)").matches ? "calc(100% - 340px)" : "100%";
+      const docked = (headEditing || !torsoTools.hidden) && window.matchMedia("(min-width: 768px)").matches;
+      container.style.width = docked ? "calc(100% - 340px)" : "100%";
       const w = container.clientWidth;
       const h = container.clientHeight;
       camera.aspect = w / h;
