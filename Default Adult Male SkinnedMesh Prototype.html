@@ -53,11 +53,15 @@
 
   <aside id="controlPanel" class="fixed right-3 w-[316px] max-w-[calc(100vw-24px)] bg-slate-900/85 backdrop-blur-lg border border-slate-700/70 rounded-2xl shadow-2xl z-30 flex flex-col overflow-hidden transition-transform duration-200 translate-x-[120%] md:translate-x-0" style="top:calc(0.75rem + env(safe-area-inset-top, 0px)); bottom:calc(0.75rem + env(safe-area-inset-bottom, 0px))">
     <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-      <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Rig &amp; Animation Controls</span>
+      <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Character Tools</span>
       <button id="closePanelBtn" class="md:hidden text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800">Close</button>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+    <div class="grid grid-cols-2 gap-1.5 p-3 border-b border-slate-800">
+      <button id="rigTabBtn" aria-pressed="true" class="py-2 text-xs rounded-xl bg-sky-500 text-slate-950">Rig &amp; Animation</button>
+      <button id="materialsTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Materials</button>
+    </div>
+    <div id="rigTools" class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
       <section>
         <div class="flex items-center justify-between mb-2">
           <h2 class="font-semibold text-slate-200">1. Base Locomotion &amp; Stance</h2>
@@ -201,6 +205,38 @@
         </div>
       </section>
     </div>
+    <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-3">
+        <h2 class="font-semibold text-slate-200">Textures &amp; Materials</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share the skin texture; their surface properties are independent.</p>
+        <label class="block space-y-1">
+          <span class="text-slate-300">Material slot</span>
+          <select id="materialSlot" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2"></select>
+        </label>
+        <label class="flex items-center justify-between text-slate-300">
+          <span id="materialColorLabel">Base color</span>
+          <input id="materialColor" type="color" class="w-12 h-8 bg-slate-800 rounded cursor-pointer" />
+        </label>
+        <div id="textureControls" class="space-y-2"></div>
+      </section>
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-3">
+        <h2 class="font-semibold text-slate-200">Surface properties</h2>
+        <div id="surfaceControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <div class="flex justify-between items-center">
+          <h2 class="font-semibold text-slate-200">Reusable function</h2>
+          <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index].</p>
+        <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
+          <button id="exportMaterialsBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+        </div>
+        <p id="materialStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
+      </section>
+    </div>
   </aside>
 
   <script type="module">
@@ -247,6 +283,12 @@
       const shirtHex = palette.shirt ?? "#2e5a88";
       const shortsHex = palette.shorts ?? "#4a4e4d";
       const hairHex = palette.hair ?? "#241c18";
+      const textureSettings = {
+        skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
+        skinRepeatX: 3, skinRepeatY: 3, shirtRepeatX: 10, shirtRepeatY: 10,
+        shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
+        ...palette.textures,
+      };
 
       // Tileable value-noise helpers
       const hash2 = (x, y, s) => { const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return h - Math.floor(h); };
@@ -292,17 +334,19 @@
             const wr = fbm(u, v, 24, 3, 23) - 0.5;
             const pore = Math.max(0, vnoise(u * 128, v * 128, 128, 5) - 0.8) * 5;
             const fr = Math.max(0, fbm(u, v, 20, 2, 31) - 0.68) * 4;
-            const k = 1 + blotch * 0.16 + fine * 0.06 - pore * 0.12;
-            col.img.data.set([R * k + red * 22 - fr * 10, G * k - red * 14 - fr * 16 - pore * 4, B * k - red * 14 - fr * 20, 255], i);
-            const h = 128 + fine * 60 + wr * 40 - pore * 110;
+            const detail = textureSettings.skinDetail;
+            const k = 1 + (blotch * 0.16 + fine * 0.06 - pore * 0.12) * detail;
+            col.img.data.set([R * k + (red * 22 - fr * 10) * detail, G * k - (red * 14 + fr * 16 + pore * 4) * detail, B * k - (red * 14 + fr * 20) * detail, 255], i);
+            const h = 128 + (fine * 60 + wr * 40 - pore * 110) * detail;
             bmp.img.data.set([h, h, h, 255], i);
           }
         }
-        return { map: finish(col, true, [3, 3]), bump: finish(bmp, false, [3, 3]) };
+        const repeat = [textureSettings.skinRepeatX, textureSettings.skinRepeatY];
+        return { map: finish(col, true, repeat), bump: finish(bmp, false, repeat) };
       }
 
       // Fabric: plain weave threads with fuzz + bump
-      function makeWeaveTextures(hex, contrast) {
+      function makeWeaveTextures(hex, contrast, repeat) {
         const S = 256, col = mk(S), bmp = mk(S), [R, G, B] = rgb(hex);
         for (let y = 0; y < S; y++) {
           for (let x = 0; x < S; x++) {
@@ -317,7 +361,7 @@
             bmp.img.data.set([h, h, h, 255], i);
           }
         }
-        return { map: finish(col, true, [10, 10]), bump: finish(bmp, false, [10, 10]) };
+        return { map: finish(col, true, repeat), bump: finish(bmp, false, repeat) };
       }
 
       // Hair: strand streaks running along V
@@ -327,13 +371,14 @@
           for (let x = 0; x < S; x++) {
             const u = x / S, v = y / S, i = (y * S + x) * 4;
             const s = vnoise(u * 96, v * 3, 96, 8) * 0.7 + vnoise(u * 24, v * 2, 24, 2) * 0.3;
-            const k = (0.55 + s * 0.9) * 1.2;
+            const k = 1.2 + ((0.55 + s * 0.9) * 1.2 - 1.2) * textureSettings.hairContrast;
             col.img.data.set([R * k, G * k, B * k, 255], i);
-            const h = s * 255;
+            const h = 128 + (s * 255 - 128) * textureSettings.hairContrast;
             bmp.img.data.set([h, h, h, 255], i);
           }
         }
-        return { map: finish(col, true, [10, 3], true), bump: finish(bmp, false, [10, 3], true) };
+        const repeat = [textureSettings.hairRepeatX, textureSettings.hairRepeatY];
+        return { map: finish(col, true, repeat, true), bump: finish(bmp, false, repeat, true) };
       }
 
       // 512x512 procedural eye texture
@@ -457,14 +502,14 @@
       }
 
       const skinTex = makeSkinTextures(skinHex);
-      const shirtTex = makeWeaveTextures(shirtHex, 0.28);
-      const shortsTex = makeWeaveTextures(shortsHex, 0.34);
+      const shirtTex = makeWeaveTextures(shirtHex, textureSettings.shirtContrast, [textureSettings.shirtRepeatX, textureSettings.shirtRepeatY]);
+      const shortsTex = makeWeaveTextures(shortsHex, textureSettings.shortsContrast, [textureSettings.shortsRepeatX, textureSettings.shortsRepeatY]);
       const hairTex = makeHairTextures(hairHex);
       const eyeMap = makeEyeTexture();
 
       // 0: Body Skin, 1: T-Shirt, 2: Shorts, 3: Hair/Brows,
       // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Socks, 8: Sneakers, 9: Oral Mucosa/Tongue
-      return [
+      const materials = [
         new THREE.MeshPhysicalMaterial({
           map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 1.2,
           roughness: 0.60, metalness: 0.0,
@@ -505,6 +550,10 @@
           clearcoat: 0.55, clearcoatRoughness: 0.22, side: THREE.DoubleSide,
         }),
       ];
+      materials.forEach((material, index) => {
+        if (palette.materials?.[index]) material.setValues(palette.materials[index]);
+      });
+      return materials;
     }
 
     // --- Shared hand layout: finger/thumb joint positions used by BOTH the skeleton and the hand mesh ---
@@ -2822,6 +2871,223 @@
     updateRapierVisual("idle");
 
     // --- UI Event Wiring ---
+    const materialNames = ["Body Skin", "T-Shirt", "Shorts", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Socks", "Sneakers", "Mouth / Tongue"];
+    const textureKeys = ["skin", "shirt", "shorts", "hair", null, "skin", null, null, null, null];
+    const surfaceDefs = [
+      ["roughness", "Roughness", 0, 1, 0.01],
+      ["metalness", "Metalness", 0, 1, 0.01],
+      ["bumpScale", "Bump strength", 0, 3, 0.01],
+      ["sheen", "Sheen", 0, 1, 0.01],
+      ["sheenRoughness", "Sheen roughness", 0, 1, 0.01],
+      ["clearcoat", "Clearcoat", 0, 1, 0.01],
+      ["clearcoatRoughness", "Clearcoat roughness", 0, 1, 0.01],
+      ["ior", "Index of refraction", 1, 2.33, 0.01],
+    ];
+    const initialMaterialPalette = {
+      skin: "#c68b59", shirt: "#2e5a88", shorts: "#4a4e4d", hair: "#241c18",
+      textures: {
+        skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
+        skinRepeatX: 3, skinRepeatY: 3, shirtRepeatX: 10, shirtRepeatY: 10,
+        shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
+      },
+      materials: character.skinnedMesh.material.map((material, index) => {
+        const values = {};
+        if (!textureKeys[index]) values.color = `#${material.color.getHexString()}`;
+        for (const [key] of surfaceDefs) {
+          if (typeof material[key] === "number" && (key !== "bumpScale" || material.bumpMap)) {
+            values[key] = material[key];
+          }
+        }
+        return values;
+      }),
+    };
+    let materialPalette = structuredClone(initialMaterialPalette);
+    let materialRefreshTimer = null;
+    const materialSlot = document.getElementById("materialSlot");
+    const materialColor = document.getElementById("materialColor");
+    const materialSource = document.getElementById("materialSource");
+    const materialStatus = document.getElementById("materialStatus");
+
+    materialNames.forEach((name, index) => {
+      const option = document.createElement("option");
+      option.value = index;
+      option.textContent = `${index}: ${name}`;
+      materialSlot.appendChild(option);
+    });
+
+    function updateMaterialSource() {
+      const defaults = JSON.stringify(materialPalette, null, 2);
+      materialSource.value = createProceduralMaterials.toString().replace(
+        "function createProceduralMaterials(palette = {}) {",
+        `function createProceduralMaterials(palette = {}) {
+      const defaults = ${defaults};
+      palette = {
+        ...defaults, ...palette,
+        textures: { ...defaults.textures, ...palette.textures },
+        materials: defaults.materials.map((values, index) => ({
+          ...values, ...palette.materials?.[index],
+        })),
+      };`
+      );
+    }
+
+    function refreshCharacterMaterials() {
+      clearTimeout(materialRefreshTimer);
+      materialRefreshTimer = null;
+      const nextMaterials = createProceduralMaterials(materialPalette);
+      const previousMaterials = character.skinnedMesh.material;
+      const wireframe = document.getElementById("wireframeToggle").checked;
+      nextMaterials.forEach((material) => { material.wireframe = wireframe; });
+      character.skinnedMesh.material = nextMaterials;
+      const textures = new Set();
+      previousMaterials.forEach((material) => {
+        if (material.map) textures.add(material.map);
+        if (material.bumpMap) textures.add(material.bumpMap);
+        material.dispose();
+      });
+      textures.forEach((texture) => texture.dispose());
+      materialStatus.textContent = "Preview updated.";
+    }
+
+    function scheduleMaterialRefresh() {
+      clearTimeout(materialRefreshTimer);
+      materialStatus.textContent = "Updating procedural textures...";
+      materialRefreshTimer = setTimeout(refreshCharacterMaterials, 180);
+      updateMaterialSource();
+    }
+
+    function addMaterialSlider(container, key, labelText, min, max, step, value, onInput) {
+      const label = document.createElement("label");
+      label.className = "block";
+      const caption = document.createElement("div");
+      caption.className = "flex justify-between text-[11px] text-slate-400 mb-0.5";
+      const title = document.createElement("span");
+      title.textContent = labelText;
+      const output = document.createElement("span");
+      output.textContent = value.toFixed(2);
+      caption.append(title, output);
+      const input = document.createElement("input");
+      input.type = "range";
+      input.id = `material-${key}`;
+      input.min = min;
+      input.max = max;
+      input.step = step;
+      input.value = value;
+      input.className = "w-full";
+      input.addEventListener("input", () => {
+        const value = Number(input.value);
+        output.textContent = value.toFixed(2);
+        onInput(value);
+      });
+      label.append(caption, input);
+      container.appendChild(label);
+    }
+
+    function showMaterialControls() {
+      const index = Number(materialSlot.value);
+      const textureKey = textureKeys[index];
+      materialColor.value = textureKey ? materialPalette[textureKey] : materialPalette.materials[index].color;
+      document.getElementById("materialColorLabel").textContent = textureKey ? "Texture color" : index === 4 ? "Eye tint" : "Base color";
+      const textureControls = document.getElementById("textureControls");
+      const surfaceControls = document.getElementById("surfaceControls");
+      textureControls.replaceChildren();
+      surfaceControls.replaceChildren();
+      if (textureKey) {
+        const detailKey = textureKey === "skin" ? "skinDetail" : `${textureKey}Contrast`;
+        addMaterialSlider(textureControls, detailKey, textureKey === "skin" ? "Pores / tone detail" : "Texture contrast",
+          0, textureKey === "shirt" || textureKey === "shorts" ? 1 : 2, 0.01, materialPalette.textures[detailKey], (value) => {
+            materialPalette.textures[detailKey] = value;
+            scheduleMaterialRefresh();
+          });
+        for (const axis of ["X", "Y"]) {
+          const key = `${textureKey}Repeat${axis}`;
+          addMaterialSlider(textureControls, key, `Texture tiling ${axis}`, 1, 30, 0.1, materialPalette.textures[key], (value) => {
+            materialPalette.textures[key] = value;
+            character.skinnedMesh.material.forEach((material, slot) => {
+              if (textureKeys[slot] === textureKey) {
+                for (const texture of [material.map, material.bumpMap]) {
+                  texture.repeat[axis.toLowerCase()] = value;
+                }
+              }
+            });
+            updateMaterialSource();
+          });
+        }
+      }
+      for (const [key, label, min, max, step] of surfaceDefs) {
+        if (!(key in materialPalette.materials[index])) continue;
+        addMaterialSlider(surfaceControls, key, label, min, max, step, materialPalette.materials[index][key], (value) => {
+          materialPalette.materials[index][key] = value;
+          character.skinnedMesh.material[index].setValues({ [key]: value });
+          updateMaterialSource();
+          materialStatus.textContent = "Preview updated.";
+        });
+      }
+    }
+
+    materialSlot.addEventListener("change", showMaterialControls);
+    materialColor.addEventListener("input", () => {
+      const index = Number(materialSlot.value);
+      const textureKey = textureKeys[index];
+      if (textureKey) {
+        materialPalette[textureKey] = materialColor.value;
+        scheduleMaterialRefresh();
+      } else {
+        materialPalette.materials[index].color = materialColor.value;
+        character.skinnedMesh.material[index].color.set(materialColor.value);
+        updateMaterialSource();
+        materialStatus.textContent = "Preview updated.";
+      }
+    });
+    document.getElementById("resetMaterialsBtn").addEventListener("click", () => {
+      materialPalette = structuredClone(initialMaterialPalette);
+      refreshCharacterMaterials();
+      showMaterialControls();
+      updateMaterialSource();
+      materialStatus.textContent = "All materials reset.";
+    });
+    document.getElementById("copyMaterialsBtn").addEventListener("click", async () => {
+      if (materialRefreshTimer !== null) refreshCharacterMaterials();
+      try {
+        await navigator.clipboard.writeText(materialSource.value);
+        materialStatus.textContent = "Function copied.";
+      } catch (error) {
+        console.error("Could not copy procedural materials:", error);
+        materialSource.focus();
+        materialSource.select();
+        materialStatus.textContent = "Clipboard unavailable. Function selected; copy manually or export .js.";
+      }
+    });
+    document.getElementById("exportMaterialsBtn").addEventListener("click", () => {
+      if (materialRefreshTimer !== null) refreshCharacterMaterials();
+      const blob = new Blob([`${materialSource.value}\n`], { type: "text/javascript" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "createProceduralMaterials.js";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      materialStatus.textContent = "Function exported.";
+    });
+    for (const [tabId, toolsId] of [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"]]) {
+      document.getElementById(tabId).addEventListener("click", () => {
+        for (const [id, panel] of [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"]]) {
+          const active = id === tabId;
+          document.getElementById(panel).hidden = !active;
+          const button = document.getElementById(id);
+          button.setAttribute("aria-pressed", String(active));
+          button.classList.toggle("bg-sky-500", active);
+          button.classList.toggle("text-slate-950", active);
+          button.classList.toggle("bg-slate-800", !active);
+          button.classList.toggle("text-slate-200", !active);
+        }
+      });
+    }
+    showMaterialControls();
+    updateMaterialSource();
+
     function setActiveGroupBtn(selector, activeEl) {
       document.querySelectorAll(selector).forEach((btn) => {
         const isAct = btn === activeEl;
