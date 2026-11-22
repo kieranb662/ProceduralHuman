@@ -749,6 +749,10 @@
         }
         addBone(`Thumb2_${side}`, `Thumb_${side}`, hl.thumb.tMid.x, hl.thumb.tMid.y, hl.thumb.tMid.z);
         addBone(`Thumb3_${side}`, `Thumb2_${side}`, hl.thumb.tJ3.x, hl.thumb.tJ3.y, hl.thumb.tJ3.z);
+        // Shoulder helper driven to half of UpperArm's rotation in update().
+        addBone(`Deltoid_${side}`, `Clavicle_${side}`, s * 0.195, 1.405, -0.006);
+        // Mid-forearm helper driven to half of Hand's twist (pronation) in update().
+        addBone(`ForearmTwist_${side}`, `Forearm_${side}`, s * 0.4925, 1.125, -0.003);
       }
 
       for (const [side, s] of [["L", 1], ["R", -1]]) {
@@ -950,7 +954,7 @@
         const base = spineWeight(p.y);
         return pk([...base.indices.map((i, k) => [i, base.weights[k] * (1 - shoulder * 0.65 - hip)]),
           [bi(`Clavicle_${side}`), shoulder * 0.30],
-          [bi(`UpperArm_${side}`), shoulder * 0.35], [bi(`Thigh_${side}`), hip]]);
+          [bi(`Deltoid_${side}`), shoulder * 0.35], [bi(`Thigh_${side}`), hip]]);
       };
       const table = [
         { y: 0.89, rx: 0.179, rz: 0.105, cz: -0.002 },
@@ -1042,7 +1046,9 @@
             let a = angles[j];
             a += Math.round((regular - a) / (Math.PI * 2)) * Math.PI * 2;
             a = THREE.MathUtils.lerp(a, regular, Math.min(1, (r + 1) / 3));
-            const blend = slot.startsWith("arms_") ? [0.18, 0.55, 0.85, 1][Math.min(r, 3)]
+            // The shared shoulder boundary blends into the torso; distal rings must not
+            // inherit its chest weights, which collapse the deltoid when the arm is raised.
+            const blend = slot.startsWith("arms_") ? 1
               : [0.45, 0.75, 1][Math.min(r, 2)];
             const source = boundary[j];
             const weight = pk([...d.weight.indices.map((i, k) => [i, d.weight.weights[k] * blend]),
@@ -1071,18 +1077,18 @@
         const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
         const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
         const defs = [
-          [at(upper, elbow, 0.20), 0.059, 0.059, w("Clavicle", "UpperArm", 0.85)],
-          [at(upper, elbow, 0.35), 0.057, 0.056, w("Clavicle", "UpperArm", 1)],
+          [at(upper, elbow, 0.20), 0.059, 0.059, w("Deltoid", "UpperArm", 0.55)],
+          [at(upper, elbow, 0.35), 0.057, 0.056, w("Deltoid", "UpperArm", 1)],
           [at(upper, elbow, 0.50), 0.052, 0.051, w("UpperArm", "Forearm", 0)],
           [at(upper, elbow, 0.68), 0.047, 0.047, w("UpperArm", "Forearm", 0.04)],
           [at(upper, elbow, 0.86), 0.043, 0.043, w("UpperArm", "Forearm", 0.22)],
           [at(upper, elbow, 0.96), 0.041, 0.041, w("UpperArm", "Forearm", 0.43)],
           [elbow.clone(), 0.042, 0.042, w("UpperArm", "Forearm", 0.55)],
           [at(elbow, hand, 0.14), 0.044, 0.043, w("UpperArm", "Forearm", 0.82)],
-          [at(elbow, hand, 0.36), 0.041, 0.040, w("Forearm", "Hand", 0)],
-          [at(elbow, hand, 0.68), 0.032, 0.033, w("Forearm", "Hand", 0.05)],
-          [at(elbow, hand, 0.90), 0.024, 0.030, w("Forearm", "Hand", 0.3)],
-          [hand.clone(), 0.020, 0.035, w("Forearm", "Hand", 0.75)],
+          [at(elbow, hand, 0.36), 0.041, 0.040, w("Forearm", "ForearmTwist", 0.4)],
+          [at(elbow, hand, 0.68), 0.032, 0.033, w("Forearm", "ForearmTwist", 1)],
+          [at(elbow, hand, 0.90), 0.024, 0.030, w("ForearmTwist", "Hand", 0.3)],
+          [hand.clone(), 0.020, 0.035, w("ForearmTwist", "Hand", 0.75)],
           [hand.clone().add(new THREE.Vector3(s * 0.015, -0.042, 0.004)), 0.016, 0.040, w("Forearm", "Hand", 1)],
           [hand.clone().add(new THREE.Vector3(s * 0.025, -0.076, 0.006)), 0.010, 0.035, w("Forearm", "Hand", 1)],
           [hand.clone().add(new THREE.Vector3(s * 0.028, -0.085, 0.007)), 0.003, 0.022, w("Forearm", "Hand", 1)],
@@ -2523,11 +2529,26 @@
       // 7. WAVING
       {
         const t = [0, 0.25, 0.5, 0.75, 1.0];
+        const clavicle = [-0.18, -0.20, -0.18, -0.16, -0.18].map((a) => eulerQ(0, 0, a));
+        const upper = [-1.65, -1.60, -1.65, -1.70, -1.65].map((a) => eulerQ(-0.35, 0, a));
+        const forearm = [-1.25, -0.85, -1.25, -1.55, -1.25].map((a) => eulerQ(0, 0, a));
+        const wrist = [-0.15, 0.22, -0.15, -0.35, -0.15].map((a) => eulerQ(0, 0, a));
+        const palmDir = handLayout(-1).palmDir;
+        const palmNormal = new THREE.Vector3(0, 0, 1).cross(palmDir).normalize();
+        const forward = new THREE.Vector3(0, 0, 1);
+        // Hand_R carries the pronation that turns the palm to face +Z (the character's forward);
+        // the ForearmTwist helper spreads it along the forearm so the elbow and wrist don't candy-wrap.
+        const hand = t.map((_, i) => {
+          const parent = clavicle[i].clone().multiply(upper[i]).multiply(forearm[i]);
+          const fingers = palmDir.clone().applyQuaternion(parent.clone().multiply(wrist[i]));
+          fingers.addScaledVector(forward, -fingers.dot(forward)).normalize();
+          return parent.invert().multiply(makeOrthonormalBasisQuat(palmDir, palmNormal, fingers, forward));
+        });
         clips.waving = new THREE.AnimationClip("waving", 1.0, [
-          makeQuatTrack("Clavicle_R", t, [eulerQ(0, 0, -0.18), eulerQ(0, 0, -0.20), eulerQ(0, 0, -0.18), eulerQ(0, 0, -0.16), eulerQ(0, 0, -0.18)]),
-          makeQuatTrack("UpperArm_R", t, [eulerQ(-0.35, 0, -1.65), eulerQ(-0.35, 0, -1.60), eulerQ(-0.35, 0, -1.65), eulerQ(-0.35, 0, -1.70), eulerQ(-0.35, 0, -1.65)]),
-          makeQuatTrack("Forearm_R", t, [eulerQ(0, 0, -1.25), eulerQ(0, 0, -0.85), eulerQ(0, 0, -1.25), eulerQ(0, 0, -1.55), eulerQ(0, 0, -1.25)]),
-          makeQuatTrack("Hand_R", t, [eulerQ(0, 0, -0.15), eulerQ(0, 0, 0.22), eulerQ(0, 0, -0.15), eulerQ(0, 0, -0.35), eulerQ(0, 0, -0.15)]),
+          makeQuatTrack("Clavicle_R", t, clavicle),
+          makeQuatTrack("UpperArm_R", t, upper),
+          makeQuatTrack("Forearm_R", t, forearm),
+          makeQuatTrack("Hand_R", t, hand),
           ...fingerCurlTracks("R", t, [0.06, 0.10, 0.05], [0.04, 0.06, 0.04]),
         ]);
       }
@@ -3000,6 +3021,8 @@
       const ikBlendBones = ["Chest", "Clavicle_R", "UpperArm_R", "Forearm_R", "Hand_R"];
       for (const name of RIGHT_ARM_BONES) baseArmQuats.set(name, new THREE.Quaternion());
       for (const name of ikBlendBones) preIkQuats.set(name, new THREE.Quaternion());
+      const forearmTwistAxes = Object.fromEntries(["L", "R"].map((side) => [side,
+        rig.worldRest.get(`Hand_${side}`).clone().sub(rig.worldRest.get(`Forearm_${side}`)).normalize()]));
 
       let blinkTimer = 2.4;
 
@@ -3199,6 +3222,18 @@
               b.quaternion.copy(preIkQuats.get(name)).slerp(ikQ, reachBlend);
             }
           }
+        }
+
+        // Linear blend skinning collapses when one seam blends a large rotation difference.
+        // Helpers split it into half-angle seams: Deltoid takes half of UpperArm's rotation,
+        // ForearmTwist takes half of Hand's twist about the forearm axis.
+        for (const side of ["L", "R"]) {
+          bm.get(`Deltoid_${side}`).quaternion.identity().slerp(bm.get(`UpperArm_${side}`).quaternion, 0.5);
+          const hq = bm.get(`Hand_${side}`).quaternion, axis = forearmTwistAxes[side];
+          let twist = 2 * Math.atan2(hq.x * axis.x + hq.y * axis.y + hq.z * axis.z, hq.w);
+          if (twist > Math.PI) twist -= Math.PI * 2;
+          if (twist < -Math.PI) twist += Math.PI * 2;
+          bm.get(`ForearmTwist_${side}`).quaternion.setFromAxisAngle(axis, twist * 0.5);
         }
 
         // 4. Eye micro-saccades & coupled head/neck gaze follow
