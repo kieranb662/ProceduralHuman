@@ -57,9 +57,10 @@
       <button id="closePanelBtn" class="md:hidden text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800">Close</button>
     </div>
 
-    <div class="grid grid-cols-2 gap-1.5 p-3 border-b border-slate-800">
+    <div class="grid grid-cols-3 gap-1.5 p-3 border-b border-slate-800">
       <button id="rigTabBtn" aria-pressed="true" class="py-2 text-xs rounded-xl bg-sky-500 text-slate-950">Rig &amp; Animation</button>
       <button id="materialsTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Materials</button>
+      <button id="headTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Head Sculpt</button>
     </div>
     <div id="rigTools" class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
       <section>
@@ -203,6 +204,78 @@
         <div id="rapierReadout" class="mt-2 p-2 rounded-lg bg-slate-900 text-[10px] font-mono text-emerald-300 leading-relaxed whitespace-pre-line">
           Rapier Capsule: r=0.28m, hh=0.61m (H=1.78m)
         </div>
+      </section>
+    </div>
+    <div id="headTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-3">
+        <h2 class="font-semibold text-slate-200">Default Head &amp; Face Editor</h2>
+        <label class="flex items-center gap-2 text-sky-300">
+          <input id="headEditorToggle" type="checkbox" />
+          Edit neutral head in the canvas
+        </label>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Animation pauses while editing. Left-drag to sculpt, right-drag to orbit, middle-drag to pan, and scroll to zoom. Shift reverses Raise / Lower. Edits are saved in this browser; export code to keep them in the HTML.</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-head-view="front" class="py-2 rounded-xl bg-slate-800">Front</button>
+          <button data-head-view="left" class="py-2 rounded-xl bg-slate-800">Left</button>
+          <button data-head-view="right" class="py-2 rounded-xl bg-slate-800">Right</button>
+        </div>
+        <label class="block space-y-1">
+          <span class="text-slate-300">Part to adjust / sculpt</span>
+          <select id="headPart" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2">
+            <option value="skin">Face / skull skin</option>
+            <option value="all">Entire head</option>
+            <option value="eyes">Eyes + eyelids</option>
+            <option value="lidTop">Upper eyelids</option>
+            <option value="lidBot">Lower eyelids</option>
+            <option value="brows">Eyebrows</option>
+            <option value="ears">Ears</option>
+            <option value="hair">Hair cap</option>
+            <option value="teeth">Teeth</option>
+            <option value="cavity">Mouth interior / tongue</option>
+          </select>
+        </label>
+      </section>
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-3">
+        <h2 class="font-semibold text-slate-200">Canvas brush</h2>
+        <select id="headBrush" aria-label="Sculpt brush" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2">
+          <option value="raise">Raise</option>
+          <option value="lower">Lower</option>
+          <option value="move">Grab / move</option>
+          <option value="smooth">Smooth</option>
+          <option value="orbit">Navigate only</option>
+        </select>
+        <label class="block">
+          <div class="flex justify-between text-slate-400"><span>Radius</span><output id="headRadiusValue">15 mm</output></div>
+          <input id="headRadius" type="range" min="3" max="60" step="1" value="15" class="w-full" />
+        </label>
+        <label class="block">
+          <div class="flex justify-between text-slate-400"><span>Strength</span><output id="headStrengthValue">0.40</output></div>
+          <input id="headStrength" type="range" min="0.05" max="1" step="0.05" value="0.4" class="w-full" />
+        </label>
+        <label class="flex items-center gap-2 text-slate-300"><input id="headMirror" type="checkbox" checked /> Mirror across the face center</label>
+      </section>
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Part size &amp; placement</h2>
+        <div id="headTransformControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Facial contour adjustments</h2>
+        <p class="text-[11px] text-slate-400">Signed millimeter offsets sculpt the neutral face, not an expression.</p>
+        <div id="headFeatureControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <div class="grid grid-cols-3 gap-1.5">
+          <button id="undoHeadBtn" class="py-2 rounded-xl bg-slate-800 disabled:opacity-40" disabled>Undo</button>
+          <button id="redoHeadBtn" class="py-2 rounded-xl bg-slate-800 disabled:opacity-40" disabled>Redo</button>
+          <button id="resetHeadBtn" class="py-2 rounded-xl bg-slate-800">Reset edits</button>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Replace only the buildHeadAndFaceParts function in this HTML with the generated function below. It includes the base sculpt, saved part transforms, and procedural brush strokes. Existing geometry helpers, THREE, and BufferGeometryUtils are required.</p>
+        <textarea id="headSource" readonly aria-label="Generated procedural head function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="copyHeadBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
+          <button id="exportHeadBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+        </div>
+        <p id="headStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
       </section>
     </div>
     <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
@@ -1166,7 +1239,233 @@
     }
 
     // --- 2E. Sculpted Deformable Head, Oral Cavity, Eyes, Eyelids, Ears, Brows & Hair ---
-    function buildHeadAndFaceParts(rig) {
+    function headTargetTags(target) {
+      const tags = {
+        all: ["head", "eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R", "brow_L", "brow_R", "ear_L", "ear_R", "teethTop", "teethBot", "cavity", "hair"],
+        skin: ["head", "cavity"], eyes: ["eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R"],
+        lidTop: ["lidTop_L", "lidTop_R"], lidBot: ["lidBot_L", "lidBot_R"],
+        brows: ["brow_L", "brow_R"], ears: ["ear_L", "ear_R"],
+        hair: ["hair"], teeth: ["teethTop", "teethBot"], cavity: ["cavity"],
+      };
+      if (!tags[target]) throw new Error(`Unknown head part: ${target}`);
+      return tags[target];
+    }
+
+    function validateHeadDesign(design) {
+      if (!design || typeof design !== "object" ||
+          !design.transforms || typeof design.transforms !== "object" || Array.isArray(design.transforms) ||
+          !design.features || typeof design.features !== "object" || Array.isArray(design.features) || !Array.isArray(design.strokes)) {
+        throw new Error("Head design must contain transforms, features, and strokes.");
+      }
+      for (const [target, transform] of Object.entries(design.transforms)) {
+        headTargetTags(target);
+        if (!transform || typeof transform !== "object" || Array.isArray(transform) ||
+            Object.keys(transform).some((key) => !["sx", "sy", "sz", "x", "y", "z"].includes(key))) {
+          throw new Error(`Invalid head transform: ${target}`);
+        }
+        for (const key of ["sx", "sy", "sz", "x", "y", "z"]) {
+          if (transform[key] !== undefined && (!Number.isFinite(transform[key]) || (key.startsWith("s") && transform[key] <= 0))) {
+            throw new Error(`Invalid head transform: ${target}.${key}`);
+          }
+        }
+      }
+      const featureKeys = ["forehead", "noseWidth", "noseTip", "cheeks", "jawWidth", "chin", "lips"];
+      for (const [key, value] of Object.entries(design.features)) {
+        if (!featureKeys.includes(key) || !Number.isFinite(value)) throw new Error(`Invalid head contour: ${key}`);
+      }
+      for (const stroke of design.strokes) {
+        if (!stroke || typeof stroke !== "object") throw new Error("Invalid procedural head brush stroke.");
+        headTargetTags(stroke.target);
+        if (!["raise", "lower", "move", "smooth"].includes(stroke.mode) ||
+            !Number.isFinite(stroke.radius) || stroke.radius <= 0 ||
+            !Number.isFinite(stroke.strength) || stroke.strength < 0 || stroke.strength > 1 ||
+            ![stroke.center, stroke.delta].every((v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite)) ||
+            typeof stroke.mirror !== "boolean" || (stroke.mirrorX !== undefined && !Number.isFinite(stroke.mirrorX))) {
+          throw new Error("Invalid procedural head brush stroke.");
+        }
+      }
+    }
+
+    function headSculptTopology(geo) {
+      if (geo.userData.sculptTopology) return geo.userData.sculptTopology;
+      const pos = geo.attributes.position;
+      const buckets = new Map();
+      const owner = [];
+      for (let i = 0; i < pos.count; i++) {
+        const key = `${pos.getX(i).toFixed(7)},${pos.getY(i).toFixed(7)},${pos.getZ(i).toFixed(7)}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        const group = buckets.get(key);
+        group.push(i);
+        owner[i] = group[0];
+      }
+      const neighbors = new Map([...buckets.values()].map((group) => [group[0], new Set()]));
+      const idx = geo.index;
+      for (let i = 0; i < idx.count; i += 3) {
+        const tri = [owner[idx.getX(i)], owner[idx.getX(i + 1)], owner[idx.getX(i + 2)]];
+        for (const a of tri) for (const b of tri) if (a !== b) neighbors.get(a).add(b);
+      }
+      const topology = { groups: [...buckets.values()], neighbors, owner };
+      geo.userData.sculptTopology = topology;
+      return topology;
+    }
+
+    function updateHeadPartNormals(part) {
+      part.geo.computeVertexNormals();
+      const normals = part.geo.attributes.normal;
+      const average = new THREE.Vector3(), n = new THREE.Vector3();
+      for (const group of headSculptTopology(part.geo).groups) {
+        if (group.length < 2) continue;
+        average.set(0, 0, 0);
+        for (const i of group) average.add(n.fromBufferAttribute(normals, i));
+        average.normalize();
+        for (const i of group) normals.setXYZ(i, average.x, average.y, average.z);
+      }
+      normals.needsUpdate = true;
+    }
+
+    function syncHeadMouthRim(parts) {
+      const head = parts.find((part) => part.tag === "head");
+      const cavity = parts.find((part) => part.tag === "cavity");
+      const loop = head.geo.userData.mouthLoopIndices;
+      if (loop.length < 8) return;
+      const h = head.geo.attributes.position, c = cavity.geo.attributes.position;
+      for (let i = 0; i <= loop.length; i++) {
+        const vi = loop[i % loop.length];
+        c.setXYZ(i, h.getX(vi), h.getY(vi), h.getZ(vi));
+      }
+      c.needsUpdate = true;
+    }
+
+    function applyHeadSculptStroke(parts, stroke) {
+      const tags = headTargetTags(stroke.target);
+      const center = new THREE.Vector3(...stroke.center);
+      const mirrored = center.clone(); mirrored.x = 2 * (stroke.mirrorX ?? 0) - center.x;
+      const displacement = new THREE.Vector3(...stroke.delta);
+      const mirroredDelta = displacement.clone(); mirroredDelta.x *= -1;
+      const p = new THREE.Vector3(), average = new THREE.Vector3(), neighbor = new THREE.Vector3();
+      let changed = 0;
+      for (const part of parts) {
+        if (!tags.includes(part.tag)) continue;
+        const pos = part.geo.attributes.position;
+        const before = stroke.mode === "smooth" ? new Float32Array(pos.array) : null;
+        const topology = before ? headSculptTopology(part.geo) : null;
+        for (let i = 0; i < pos.count; i++) {
+          p.fromBufferAttribute(pos, i);
+          const d1 = p.distanceToSquared(center);
+          const d2 = stroke.mirror ? p.distanceToSquared(mirrored) : Infinity;
+          const distance = Math.min(d1, d2);
+          if (distance >= stroke.radius * stroke.radius) continue;
+          const weight = Math.pow(1 - distance / (stroke.radius * stroke.radius), 2);
+          if (before) {
+            const neighbors = topology.neighbors.get(topology.owner[i]);
+            if (!neighbors.size) continue;
+            average.set(0, 0, 0);
+            for (const vi of neighbors) average.add(neighbor.fromArray(before, vi * 3));
+            average.divideScalar(neighbors.size);
+            p.lerp(average, weight * stroke.strength * 0.35);
+          } else {
+            p.addScaledVector(d2 < d1 ? mirroredDelta : displacement, weight);
+          }
+          pos.setXYZ(i, p.x, p.y, p.z);
+          changed++;
+        }
+        pos.needsUpdate = true;
+      }
+      if (changed) syncHeadMouthRim(parts);
+      return changed;
+    }
+
+    function applyHeadDesign(parts, rig, design) {
+      validateHeadDesign(design);
+      const pivots = {
+        all: [0, 1.662, 0.008], skin: [0, 1.662, 0.008], eyes: [0, 1.666, 0.10],
+        lidTop: [0, 1.666, 0.10], lidBot: [0, 1.666, 0.10], brows: [0, 1.693, 0.112],
+        ears: [0, 1.656, -0.008], hair: [0, 1.662, 0.008],
+        teeth: [0, 1.595, 0.112], cavity: [0, 1.595, 0.10],
+      };
+      const transformPoint = (point, pivot, t) => {
+        if (!t) return point;
+        point.sub(pivot).multiply(new THREE.Vector3(t.sx ?? 1, t.sy ?? 1, t.sz ?? 1)).add(pivot);
+        return point.add(new THREE.Vector3((t.x ?? 0) / 1000, (t.y ?? 0) / 1000, (t.z ?? 0) / 1000));
+      };
+      const contour = (point) => {
+        const { x, y, z } = point;
+        const ax = Math.abs(x), side = Math.sign(x);
+        const f = design.features;
+        const front = smoothstep(0.01, 0.07, z);
+        const g = (cx, cy, sx, sy) => gauss(cx, y - cy, 0, sx, sy, 1) * front / 1000;
+        point.x += side * ((f.noseWidth ?? 0) * g(ax - 0.013, 1.628, 0.012, 0.016) +
+          (f.jawWidth ?? 0) * g(ax - 0.055, 1.594, 0.030, 0.027));
+        point.z += (f.forehead ?? 0) * g(x, 1.710, 0.070, 0.034) +
+          (f.noseTip ?? 0) * g(x, 1.632, 0.014, 0.016) +
+          (f.cheeks ?? 0) * g(ax - 0.050, 1.644, 0.025, 0.023) +
+          (f.chin ?? 0) * g(x, 1.563, 0.030, 0.018) +
+          (f.lips ?? 0) * g(x, 1.595, 0.028, 0.011);
+        return point;
+      };
+      const shapePoint = (point, tag, useContour) => {
+        if (useContour) contour(point);
+        transformPoint(point, new THREE.Vector3(...pivots.all), design.transforms.all);
+        for (const [target, t] of Object.entries(design.transforms)) {
+          if (target === "all" || !headTargetTags(target).includes(tag)) continue;
+          const pivot = transformPoint(new THREE.Vector3(...pivots[target]), new THREE.Vector3(...pivots.all), design.transforms.all);
+          transformPoint(point, pivot, t);
+        }
+        return point;
+      };
+      const hasEdits = Object.keys(design.transforms).length || Object.keys(design.features).length || design.strokes.length;
+      if (!hasEdits) return;
+      const p = new THREE.Vector3();
+      for (const part of parts) {
+        const pos = part.geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          p.fromBufferAttribute(pos, i);
+          shapePoint(p, part.tag, ["head", "cavity", "brow_L", "brow_R"].includes(part.tag));
+          pos.setXYZ(i, p.x, p.y, p.z);
+        }
+      }
+      syncHeadMouthRim(parts);
+      for (const stroke of design.strokes) applyHeadSculptStroke(parts, stroke);
+      for (const part of parts) updateHeadPartNormals(part);
+
+      const boneTags = {
+        Head: null, Jaw: "head", UpperLip_C: "head", UpperLip_L: "head", UpperLip_R: "head",
+        LowerLip_C: "head", LowerLip_L: "head", LowerLip_R: "head", MouthCorner_L: "head", MouthCorner_R: "head",
+        NoseTip: "head", Nostril_L: "head", Nostril_R: "head",
+        Eye_L: "eye_L", Eye_R: "eye_R", EyelidTop_L: "lidTop_L", EyelidTop_R: "lidTop_R",
+        EyelidBot_L: "lidBot_L", EyelidBot_R: "lidBot_R", Brow_L: "brow_L", Brow_R: "brow_R",
+        Ear_L: "ear_L", Ear_R: "ear_R",
+      };
+      for (const [name, tag] of Object.entries(boneTags)) {
+        const point = rig.worldRest.get(name);
+        shapePoint(point, tag, tag === "head" || tag?.startsWith("brow"));
+        for (const stroke of design.strokes) {
+          if (stroke.mode === "smooth" || !headTargetTags(stroke.target).includes(tag)) continue;
+          const center = new THREE.Vector3(...stroke.center);
+          const mirror = center.clone(); mirror.x = 2 * (stroke.mirrorX ?? 0) - center.x;
+          const d1 = point.distanceToSquared(center), d2 = stroke.mirror ? point.distanceToSquared(mirror) : Infinity;
+          if (Math.min(d1, d2) >= stroke.radius * stroke.radius) continue;
+          const delta = new THREE.Vector3(...stroke.delta);
+          if (d2 < d1) delta.x *= -1;
+          point.addScaledVector(delta, Math.pow(1 - Math.min(d1, d2) / (stroke.radius * stroke.radius), 2));
+        }
+      }
+      for (const bone of rig.bones) {
+        if (!(bone.name in boneTags)) continue;
+        bone.position.copy(rig.worldRest.get(bone.name));
+        if (bone.parent?.isBone) bone.position.sub(rig.worldRest.get(bone.parent.name));
+      }
+    }
+
+    function buildHeadAndFaceParts(rig, design = null) {
+      const defaults = { transforms: {}, features: {}, strokes: [] };
+      const parts = buildBaseHeadAndFaceParts(rig);
+      applyHeadDesign(parts, rig, design ?? defaults);
+      parts.design = structuredClone(design ?? defaults);
+      return parts;
+    }
+
+    function buildBaseHeadAndFaceParts(rig) {
       const { boneIndex, worldRest } = rig;
       const headCenter = new THREE.Vector3(0, 1.662, 0.008);
       const eyeL = worldRest.get("Eye_L");
@@ -1503,6 +1802,7 @@
         idx: skinIdx.slice(v * 4, v * 4 + 4),
         wgt: skinWgt.slice(v * 4, v * 4 + 4),
       }));
+      headGeo.userData.mouthLoopIndices = loopIdx;
 
       const parts = [{ geo: headGeo, mat: 5, tag: "head" }];
 
@@ -1534,24 +1834,24 @@
         }
         eyeGeo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(eIdx, 4));
         eyeGeo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(eWgt, 4));
-        parts.push({ geo: ensureUniformAttributes(eyeGeo), mat: 4 });
+        parts.push({ geo: ensureUniformAttributes(eyeGeo), mat: 4, tag: `eye_${side}` });
 
-        parts.push({ geo: buildEyelidShell(center, eyeRadius + 0.0022, true, boneIndex.get(`EyelidTop_${side}`)), mat: 5 });
-        parts.push({ geo: buildEyelidShell(center, eyeRadius + 0.0020, false, boneIndex.get(`EyelidBot_${side}`)), mat: 5 });
+        parts.push({ geo: buildEyelidShell(center, eyeRadius + 0.0022, true, boneIndex.get(`EyelidTop_${side}`)), mat: 5, tag: `lidTop_${side}` });
+        parts.push({ geo: buildEyelidShell(center, eyeRadius + 0.0020, false, boneIndex.get(`EyelidBot_${side}`)), mat: 5, tag: `lidBot_${side}` });
 
-        parts.push({ geo: buildEyebrowStrip(s, `Brow_${side}`, boneIndex, evalForeheadSurfaceZ), mat: 3 });
+        parts.push({ geo: buildEyebrowStrip(s, `Brow_${side}`, boneIndex, evalForeheadSurfaceZ), mat: 3, tag: `brow_${side}` });
       }
 
       for (const [side, s] of [["L", 1], ["R", -1]]) {
         const earRoot = worldRest.get(`Ear_${side}`);
-        parts.push({ geo: buildEarGeometry(earRoot, s, `Ear_${side}`, boneIndex), mat: 5 });
+        parts.push({ geo: buildEarGeometry(earRoot, s, `Ear_${side}`, boneIndex), mat: 5, tag: `ear_${side}` });
       }
 
-      parts.push({ geo: buildTeethArc(1.601, 0.112, bHead), mat: 6 });
-      parts.push({ geo: buildTeethArc(1.590, 0.110, bJaw), mat: 6 });
+      parts.push({ geo: buildTeethArc(1.601, 0.112, bHead), mat: 6, tag: "teethTop" });
+      parts.push({ geo: buildTeethArc(1.590, 0.110, bJaw), mat: 6, tag: "teethBot" });
       parts.push({ geo: buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop), mat: 9, tag: "cavity" });
 
-      parts.push({ geo: buildHairCap(headCenter, boneIndex), mat: 3 });
+      parts.push({ geo: buildHairCap(headCenter, boneIndex), mat: 3, tag: "hair" });
 
       return parts;
     }
@@ -1645,8 +1945,9 @@
     }
 
     // --- 2F. Procedural FACS Morph Target Generator ---
-    function buildFacialMorphTargets(mergedGeo, rig, headGroupIdx, cavGroupIdx) {
-      const posAttr = mergedGeo.attributes.position;
+    function buildFacialMorphTargets(mergedGeo, rig, headGroupIdx, cavGroupIdx, referenceGeo = mergedGeo, design = null) {
+      const posAttr = referenceGeo.attributes.position;
+      const editedPos = mergedGeo.attributes.position;
       const normAttr = mergedGeo.attributes.normal;
 
       const headGroup = mergedGeo.groups[headGroupIdx];
@@ -1668,13 +1969,23 @@
         const vi = idxAttr.getX(i);
         if (vi - cavMin < ORAL_LOFT_VERTS) headVertSet.add(vi);
       }
+      const headScale = new THREE.Vector3(1, 1, 1);
+      const cavityScale = new THREE.Vector3(1, 1, 1);
+      for (const target of ["all", "skin"]) {
+        const t = design?.transforms[target];
+        if (t) headScale.multiply(new THREE.Vector3(t.sx ?? 1, t.sy ?? 1, t.sz ?? 1));
+      }
+      cavityScale.copy(headScale);
+      const ct = design?.transforms.cavity;
+      if (ct) cavityScale.multiply(new THREE.Vector3(ct.sx ?? 1, ct.sy ?? 1, ct.sz ?? 1));
+      const lipRimCount = referenceGeo.userData.mouthRimCount ?? 0;
 
       const morphPosAttrs = [];
       const morphNormAttrs = [];
       const nTmp = new THREE.Vector3();
 
       for (const shapeName of FACS_MORPH_NAMES) {
-        const pArr = new Float32Array(posAttr.array);
+        const pArr = new Float32Array(editedPos.array);
         const nArr = new Float32Array(normAttr.array);
 
         for (const vi of headVertSet) {
@@ -1748,9 +2059,11 @@
           }
 
           if (dx !== 0 || dy !== 0 || dz !== 0) {
-            pArr[vi * 3] = x + dx;
-            pArr[vi * 3 + 1] = y + dy;
-            pArr[vi * 3 + 2] = z + dz;
+            const scale = vi >= cavMin + lipRimCount && vi - cavMin < ORAL_LOFT_VERTS ? cavityScale : headScale;
+            dx *= scale.x; dy *= scale.y; dz *= scale.z;
+            pArr[vi * 3] = editedPos.getX(vi) + dx;
+            pArr[vi * 3 + 1] = editedPos.getY(vi) + dy;
+            pArr[vi * 3 + 2] = editedPos.getZ(vi) + dz;
 
             nTmp.set(
               normAttr.getX(vi) + dx * 18,
@@ -2367,28 +2680,37 @@
       fore.updateMatrixWorld(true);
     }
 
+    function mergeCharacterParts(parts) {
+      const merged = BufferGeometryUtils.mergeGeometries(parts.map((part) => ensureUniformAttributes(part.geo)), true);
+      if (!merged) throw new Error("Could not merge procedural character geometry.");
+      parts.forEach((part, i) => { merged.groups[i].materialIndex = part.mat; });
+      const loop = parts.find((part) => part.tag === "head").geo.userData.mouthLoopIndices;
+      merged.userData.mouthRimCount = loop.length >= 8 ? loop.length + 1 : 0;
+      return merged;
+    }
+
     // --- 5. Master Factory: createAdultMaleCharacter(options) ---
     function createAdultMaleCharacter(options = {}) {
       const rig = createHumanoidSkeleton();
       const materials = createProceduralMaterials(options.palette);
 
-      const headParts = buildHeadAndFaceParts(rig);
-      const rawParts = [
+      const bodyParts = [
         ...buildTorsoParts(rig),
         ...buildArmParts(rig, "L", 1),
         ...buildArmParts(rig, "R", -1),
         ...buildLegParts(rig, "L", 1),
         ...buildLegParts(rig, "R", -1),
-        ...headParts,
       ];
+      const referenceRig = createHumanoidSkeleton();
+      const referenceHead = buildHeadAndFaceParts(referenceRig, { transforms: {}, features: {}, strokes: [] });
+      const referenceGeometry = mergeCharacterParts([...bodyParts, ...referenceHead]);
+      const headParts = buildHeadAndFaceParts(rig, options.headDesign);
+      const rawParts = [...bodyParts, ...headParts];
+      const merged = mergeCharacterParts(rawParts);
+      const headGroupIdx = rawParts.findIndex((p) => p.tag === "head");
+      const cavGroupIdx = rawParts.findIndex((p) => p.tag === "cavity");
 
-      const geometries = rawParts.map((p) => ensureUniformAttributes(p.geo));
-      const merged = BufferGeometryUtils.mergeGeometries(geometries, true);
-      for (let i = 0; i < rawParts.length; i++) {
-        merged.groups[i].materialIndex = rawParts[i].mat;
-      }
-
-      buildFacialMorphTargets(merged, rig, rawParts.findIndex((p) => p.tag === "head"), rawParts.findIndex((p) => p.tag === "cavity"));
+      buildFacialMorphTargets(merged, referenceRig, headGroupIdx, cavGroupIdx, referenceGeometry, headParts.design);
 
       const skinnedMesh = new THREE.SkinnedMesh(merged, materials);
       skinnedMesh.name = "AdultMaleSkinnedMesh";
@@ -2464,6 +2786,73 @@
       for (const b of rig.bones) {
         restLocalPos.set(b.name, b.position.clone());
         restLocalQuat.set(b.name, b.quaternion.clone());
+      }
+
+      function createHeadPreview(design) {
+        const previewRig = createHumanoidSkeleton();
+        const parts = buildHeadAndFaceParts(previewRig, design);
+        const geometry = mergeCharacterParts([...bodyParts, ...parts]);
+        let offset = bodyParts.reduce((sum, part) => sum + part.geo.attributes.position.count, 0);
+        const ranges = parts.map((part, i) => {
+          const group = geometry.groups[bodyParts.length + i];
+          const range = { part, offset, indexStart: group.start, indexCount: group.count };
+          offset += part.geo.attributes.position.count;
+          return range;
+        });
+        return { rig: previewRig, parts, geometry, ranges };
+      }
+
+      function commitHeadPreview(preview) {
+        const geometry = preview.geometry.clone();
+        buildFacialMorphTargets(geometry, referenceRig, headGroupIdx, cavGroupIdx, referenceGeometry, preview.parts.design);
+        const deltas = new Map();
+        for (const bone of rig.bones) {
+          deltas.set(bone.name, preview.rig.boneMap.get(bone.name).position.clone().sub(restLocalPos.get(bone.name)));
+        }
+        const retargetFace = FACIAL_BONES.some((name) => deltas.get(name).lengthSq() > 1e-16);
+        const faceTimes = {};
+        const resumeBlink = faceActions.blinking.isScheduled();
+        if (retargetFace) {
+          for (const name of faceNames) faceTimes[name] = faceActions[name].time;
+          faceMixer.stopAllAction();
+          faceMixer.uncacheRoot(skinnedMesh);
+        }
+        for (const bone of rig.bones) {
+          const next = preview.rig.boneMap.get(bone.name).position;
+          restLocalPos.get(bone.name).copy(next);
+          rig.worldRest.get(bone.name).copy(preview.rig.worldRest.get(bone.name));
+          bone.position.copy(next);
+          bone.quaternion.identity();
+        }
+        // Position tracks contain absolute rest coordinates; keep their offsets after moving a facial anchor.
+        for (const clip of Object.values(clips)) for (const track of clip.tracks) {
+          if (!track.name.endsWith(".position")) continue;
+          const delta = deltas.get(track.name.slice(0, -9));
+          if (!delta) continue;
+          for (let i = 0; i < track.values.length; i += 3) {
+            track.values[i] += delta.x; track.values[i + 1] += delta.y; track.values[i + 2] += delta.z;
+          }
+        }
+        const previous = skinnedMesh.geometry;
+        skinnedMesh.geometry = geometry;
+        const influences = skinnedMesh.morphTargetInfluences;
+        skinnedMesh.updateMorphTargets();
+        influences.fill(0);
+        skinnedMesh.morphTargetInfluences = influences;
+        root.updateMatrixWorld(true);
+        skinnedMesh.bind(rig.skeleton);
+        for (const bone of rig.bones) bone.quaternion.copy(restLocalQuat.get(bone.name));
+        // Rebinding also refreshes the mixer's saved original pose used during expression fade-outs.
+        if (retargetFace) {
+          for (const name of faceNames) faceActions[name] = faceMixer.clipAction(clips[name]);
+          faceActions.blinking.setLoop(THREE.LoopOnce, 1);
+          for (const name of [activeFace, ...(resumeBlink ? ["blinking"] : [])]) {
+            if (name === "neutral") continue;
+            faceActions[name].reset().setEffectiveWeight(1).play();
+            faceActions[name].time = faceTimes[name];
+          }
+        }
+        previous.dispose();
       }
 
       const baseArmQuats = new Map();
@@ -2625,6 +3014,11 @@
           b.position.copy(restLocalPos.get(b.name));
           b.quaternion.copy(restLocalQuat.get(b.name));
         }
+        if (opts.headEditor) {
+          skinnedMesh.morphTargetInfluences.fill(0);
+          root.updateMatrixWorld(true);
+          return;
+        }
 
         // 1. Base locomotion pass
         baseMixer.update(dt);
@@ -2735,6 +3129,7 @@
         mixers: { base: baseMixer, upper: upperMixer, face: faceMixer },
         faceSliders, physicsDescriptor,
         setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink, update,
+        headDesign: structuredClone(headParts.design), createHeadPreview, commitHeadPreview,
       };
     }
 
@@ -2939,6 +3334,7 @@
       const wireframe = document.getElementById("wireframeToggle").checked;
       nextMaterials.forEach((material) => { material.wireframe = wireframe; });
       character.skinnedMesh.material = nextMaterials;
+      if (headPreviewMesh) headPreviewMesh.material = nextMaterials;
       const textures = new Set();
       previousMaterials.forEach((material) => {
         if (material.map) textures.add(material.map);
@@ -2956,7 +3352,7 @@
       updateMaterialSource();
     }
 
-    function addMaterialSlider(container, key, labelText, min, max, step, value, onInput) {
+    function addMaterialSlider(container, key, labelText, min, max, step, value, onInput, idPrefix = "material") {
       const label = document.createElement("label");
       label.className = "block";
       const caption = document.createElement("div");
@@ -2968,7 +3364,7 @@
       caption.append(title, output);
       const input = document.createElement("input");
       input.type = "range";
-      input.id = `material-${key}`;
+      input.id = `${idPrefix}-${key}`;
       input.min = min;
       input.max = max;
       input.step = step;
@@ -3071,9 +3467,11 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       materialStatus.textContent = "Function exported.";
     });
-    for (const [tabId, toolsId] of [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"]]) {
+    const toolTabs = [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"], ["headTabBtn", "headTools"]];
+    for (const [tabId] of toolTabs) {
       document.getElementById(tabId).addEventListener("click", () => {
-        for (const [id, panel] of [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"]]) {
+        try { setHeadEditing(tabId === "headTabBtn"); } catch (error) { reportHeadError(error); return; }
+        for (const [id, panel] of toolTabs) {
           const active = id === tabId;
           document.getElementById(panel).hidden = !active;
           const button = document.getElementById(id);
@@ -3087,6 +3485,439 @@
     }
     showMaterialControls();
     updateMaterialSource();
+
+    const headStorageKey = "procedural-human-head-design-v1";
+    const headStatus = document.getElementById("headStatus");
+    const headSource = document.getElementById("headSource");
+    const headPart = document.getElementById("headPart");
+    const headBrush = document.getElementById("headBrush");
+    const headRadius = document.getElementById("headRadius");
+    const headStrength = document.getElementById("headStrength");
+    const defaultHeadDesign = structuredClone(character.headDesign);
+    let headDesign = structuredClone(defaultHeadDesign);
+    let headEditing = false;
+    let headPreview = null;
+    let headPreviewMesh = null;
+    let headRebuildFrame = null;
+    let headPointerFrame = null;
+    let headGesture = null;
+    let pendingHeadPointer = null;
+    let headSliderGesture = false;
+    let savedHeadView = null;
+    const headUndo = [], headRedo = [];
+    const headRaycaster = new THREE.Raycaster();
+    const headPointer = new THREE.Vector2();
+    const brushPoints = Array.from({ length: 64 }, (_, i) => new THREE.Vector3(Math.cos(i * Math.PI / 32), Math.sin(i * Math.PI / 32), 0));
+    const headCursor = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints(brushPoints),
+      new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true, opacity: 0.9 })
+    );
+    headCursor.visible = false;
+    headCursor.renderOrder = 10;
+    scene.add(headCursor);
+
+    function reportHeadError(error) {
+      console.error("Head editor:", error);
+      headStatus.textContent = `Head editor error: ${error.message}`;
+    }
+
+    function updateHeadSource() {
+      let source = buildHeadAndFaceParts.toString().replace(
+        /const defaults = [\s\S]*?;\n/,
+        `const defaults = ${JSON.stringify(headDesign, null, 2)};\n`
+      );
+      if (!source.includes("function buildBaseHeadAndFaceParts(")) {
+        const helpers = [headTargetTags, validateHeadDesign, headSculptTopology, updateHeadPartNormals,
+          syncHeadMouthRim, applyHeadSculptStroke, applyHeadDesign, buildBaseHeadAndFaceParts];
+        source = source.replace("const parts = buildBaseHeadAndFaceParts(rig);",
+          `${helpers.map((fn) => fn.toString()).join("\n\n")}\n\n      const parts = buildBaseHeadAndFaceParts(rig);`);
+      }
+      headSource.value = source;
+      document.getElementById("undoHeadBtn").disabled = headUndo.length === 0;
+      document.getElementById("redoHeadBtn").disabled = headRedo.length === 0;
+    }
+
+    function saveHeadDesign() {
+      updateHeadSource();
+      try {
+        localStorage.setItem(headStorageKey, JSON.stringify(headDesign));
+        headStatus.textContent = `${headDesign.strokes.length} procedural brush dabs. Saved in this browser.`;
+      } catch (error) {
+        console.error("Could not save head design:", error);
+        headStatus.textContent = "Browser storage unavailable. Copy or export the function to keep your edits.";
+      }
+    }
+
+    function rememberHeadDesign() {
+      headUndo.push(structuredClone(headDesign));
+      if (headUndo.length > 50) headUndo.shift();
+      headRedo.length = 0;
+    }
+
+    function disposeHeadPreview(preview) {
+      if (!preview) return;
+      preview.geometry.dispose();
+      for (const part of preview.parts) part.geo.dispose();
+    }
+
+    function rebuildHeadPreview() {
+      if (headRebuildFrame !== null) cancelAnimationFrame(headRebuildFrame);
+      headRebuildFrame = null;
+      const next = character.createHeadPreview(headDesign);
+      const previous = headPreview;
+      headPreview = next;
+      if (!headPreviewMesh) {
+        headPreviewMesh = new THREE.Mesh(next.geometry, character.skinnedMesh.material);
+        headPreviewMesh.name = "NeutralHeadEditor";
+        headPreviewMesh.castShadow = true;
+        headPreviewMesh.receiveShadow = true;
+        character.root.add(headPreviewMesh);
+      } else {
+        headPreviewMesh.geometry = next.geometry;
+      }
+      disposeHeadPreview(previous);
+      headPreviewMesh.updateMatrixWorld(true);
+    }
+
+    function scheduleHeadPreview() {
+      if (headRebuildFrame !== null) return;
+      headRebuildFrame = requestAnimationFrame(() => {
+        try { rebuildHeadPreview(); } catch (error) { reportHeadError(error); }
+      });
+    }
+
+    function setHeadEditing(active) {
+      if (active === headEditing) return;
+      finishHeadGesture();
+      if (active) {
+        rebuildHeadPreview();
+        savedHeadView = {
+          position: camera.position.clone(), target: controls.target.clone(),
+          buttons: { ...controls.mouseButtons }, held: heldProp.visible,
+          reach: reachOrb.visible, skeleton: skeletonHelper.visible, rapier: rapierMesh.visible,
+          cameraButton: ["camFullBtn", "camFaceBtn", "camHandsBtn"].find((id) => document.getElementById(id).classList.contains("bg-sky-500")),
+        };
+        headEditing = true;
+        character.skinnedMesh.visible = false;
+        heldProp.visible = reachOrb.visible = skeletonHelper.visible = rapierMesh.visible = false;
+        controls.mouseButtons.LEFT = headBrush.value === "orbit" ? THREE.MOUSE.ROTATE : null;
+        controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+        controls.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+        setHeadView("front");
+        headStatus.textContent = "Neutral-pose editor active. Sculpt directly on the selected part.";
+      } else {
+        if (headRebuildFrame !== null) rebuildHeadPreview();
+        headPreview.parts.design = structuredClone(headDesign);
+        character.commitHeadPreview(headPreview);
+        character.headDesign = structuredClone(headDesign);
+        headEditing = false;
+        character.skinnedMesh.visible = true;
+        character.root.remove(headPreviewMesh);
+        disposeHeadPreview(headPreview);
+        headPreview = headPreviewMesh = null;
+        headCursor.visible = false;
+        controls.mouseButtons = savedHeadView.buttons;
+        camera.position.copy(savedHeadView.position);
+        controls.target.copy(savedHeadView.target);
+        heldProp.visible = savedHeadView.held;
+        reachOrb.visible = savedHeadView.reach;
+        skeletonHelper.visible = savedHeadView.skeleton;
+        rapierMesh.visible = savedHeadView.rapier;
+        camLerp = null;
+        for (const id of ["camFullBtn", "camFaceBtn", "camHandsBtn"]) {
+          const button = document.getElementById(id), active = id === savedHeadView.cameraButton;
+          button.classList.toggle("bg-sky-500", active);
+          button.classList.toggle("text-slate-950", active);
+          button.classList.toggle("bg-slate-800", !active);
+          button.classList.toggle("text-slate-200", !active);
+        }
+        savedHeadView = null;
+        controls.update();
+        headStatus.textContent = "Head applied. Animation and facial controls restored.";
+      }
+      document.getElementById("headEditorToggle").checked = headEditing;
+      renderer.domElement.style.cursor = headEditing && headBrush.value !== "orbit" ? "crosshair" : "";
+      resizePreviewViewport();
+    }
+
+    function setHeadView(view) {
+      if (!headEditing) setHeadEditing(true);
+      camLerp = null;
+      const positions = { front: [0, 1.662, 0.56], left: [0.46, 1.662, 0.22], right: [-0.46, 1.662, 0.22] };
+      camera.position.set(...positions[view]);
+      controls.target.set(0, 1.662, 0.035);
+      controls.update();
+      camera.updateMatrixWorld();
+      ["camFullBtn", "camFaceBtn", "camHandsBtn"].forEach((id) => {
+        document.getElementById(id).classList.remove("bg-sky-500", "text-slate-950");
+        document.getElementById(id).classList.add("bg-slate-800", "text-slate-200");
+      });
+    }
+
+    function showHeadControls() {
+      const transforms = document.getElementById("headTransformControls");
+      const features = document.getElementById("headFeatureControls");
+      transforms.replaceChildren();
+      features.replaceChildren();
+      const target = headPart.value;
+      const transform = headDesign.transforms[target] ?? {};
+      for (const [key, label, min, max, step, defaultValue] of [
+        ["sx", "Width / spacing", 0.7, 1.3, 0.01, 1], ["sy", "Height", 0.7, 1.3, 0.01, 1],
+        ["sz", "Depth", 0.7, 1.3, 0.01, 1], ["x", "Horizontal offset (mm)", -30, 30, 0.5, 0],
+        ["y", "Vertical offset (mm)", -30, 30, 0.5, 0], ["z", "Forward offset (mm)", -30, 30, 0.5, 0],
+      ]) {
+        addMaterialSlider(transforms, key, label, min, max, step, transform[key] ?? defaultValue, (value) => {
+          beginHeadSlider();
+          headDesign.transforms[target] ??= {};
+          headDesign.transforms[target][key] = value;
+          scheduleHeadPreview();
+        }, "head");
+      }
+      for (const [key, label] of [
+        ["forehead", "Forehead fullness"], ["noseWidth", "Nose wing width"], ["noseTip", "Nose projection"],
+        ["cheeks", "Cheek fullness"], ["jawWidth", "Jaw width"], ["chin", "Chin projection"], ["lips", "Lip fullness"],
+      ]) {
+        addMaterialSlider(features, key, `${label} (mm)`, -10, 10, 0.25, headDesign.features[key] ?? 0, (value) => {
+          beginHeadSlider();
+          headDesign.features[key] = value;
+          scheduleHeadPreview();
+        }, "head");
+      }
+      for (const input of [...transforms.querySelectorAll("input"), ...features.querySelectorAll("input")]) {
+        input.addEventListener("change", () => {
+          headSliderGesture = false;
+          saveHeadDesign();
+        });
+      }
+    }
+
+    function beginHeadSlider() {
+      if (!headEditing) setHeadEditing(true);
+      finishHeadGesture();
+      if (!headSliderGesture) rememberHeadDesign();
+      headSliderGesture = true;
+    }
+
+    function pickHeadPoint(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      headPointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+      headRaycaster.setFromCamera(headPointer, camera);
+      const tags = headTargetTags(headPart.value);
+      const hit = headRaycaster.intersectObject(headPreviewMesh).find((hit) => {
+        const index = hit.faceIndex * 3;
+        return headPreview.ranges.some((range) => tags.includes(range.part.tag) &&
+          index >= range.indexStart && index < range.indexStart + range.indexCount);
+      });
+      if (!hit) { headCursor.visible = false; return null; }
+      const normal = hit.normal ?? hit.face.normal;
+      const worldNormal = normal.clone().transformDirection(headPreviewMesh.matrixWorld);
+      headCursor.position.copy(hit.point).addScaledVector(worldNormal, 0.0005);
+      headCursor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), worldNormal);
+      headCursor.scale.setScalar(Number(headRadius.value) / 1000);
+      headCursor.visible = headBrush.value !== "orbit";
+      return { point: headPreviewMesh.worldToLocal(hit.point.clone()), normal: normal.clone(), worldPoint: hit.point.clone() };
+    }
+
+    function syncHeadPreviewVertices() {
+      const pos = headPreview.geometry.attributes.position;
+      const normals = headPreview.geometry.attributes.normal;
+      const tags = new Set([...headTargetTags(headGesture.target), "cavity"]);
+      for (const range of headPreview.ranges) {
+        if (!tags.has(range.part.tag)) continue;
+        updateHeadPartNormals(range.part);
+        pos.array.set(range.part.geo.attributes.position.array, range.offset * 3);
+        normals.array.set(range.part.geo.attributes.normal.array, range.offset * 3);
+      }
+      pos.needsUpdate = normals.needsUpdate = true;
+      headPreview.geometry.computeBoundingSphere();
+      headPreview.geometry.computeBoundingBox();
+    }
+
+    function sculptHeadPointer(event, initial = false) {
+      const gesture = headGesture;
+      if (!gesture) return;
+      const strength = gesture.strength;
+      let center, delta;
+      if (gesture.mode === "move") {
+        pickHeadPoint(event);
+        const point = headRaycaster.ray.intersectPlane(gesture.plane, new THREE.Vector3());
+        if (!point) return;
+        delta = headPreviewMesh.worldToLocal(point.clone())
+          .sub(headPreviewMesh.worldToLocal(gesture.lastPlanePoint.clone())).multiplyScalar(strength);
+        gesture.lastPlanePoint.copy(point);
+        if (delta.lengthSq() < 1e-12) return;
+        center = gesture.center.clone();
+        gesture.center.add(delta);
+      } else {
+        const hit = pickHeadPoint(event);
+        if (!hit) return;
+        center = hit.point;
+        if (!initial && gesture.lastCenter && center.distanceTo(gesture.lastCenter) < gesture.radius * 0.12) return;
+        gesture.lastCenter = center.clone();
+        const sign = (gesture.mode === "lower" ? -1 : 1) * (event.shiftKey ? -1 : 1);
+        delta = hit.normal.multiplyScalar(sign * strength * 0.002);
+      }
+      const stroke = {
+        target: gesture.target, mode: gesture.mode, center: center.toArray(), delta: delta.toArray(),
+        radius: gesture.radius, strength, mirror: gesture.mirror, mirrorX: gesture.mirrorX,
+      };
+      const changed = applyHeadSculptStroke(headPreview.parts, stroke);
+      if (!changed) return;
+      if (!gesture.changed) { rememberHeadDesign(); gesture.changed = true; }
+      headDesign.strokes.push(stroke);
+      syncHeadPreviewVertices();
+    }
+
+    function finishHeadGesture() {
+      if (headPointerFrame !== null) cancelAnimationFrame(headPointerFrame);
+      headPointerFrame = null;
+      if (!headGesture) return;
+      if (pendingHeadPointer) sculptHeadPointer(pendingHeadPointer);
+      pendingHeadPointer = null;
+      const gesture = headGesture;
+      headGesture = null;
+      controls.enabled = true;
+      if (renderer.domElement.hasPointerCapture(gesture.pointerId)) renderer.domElement.releasePointerCapture(gesture.pointerId);
+      if (gesture.changed) {
+        rebuildHeadPreview();
+        saveHeadDesign();
+      }
+    }
+
+    renderer.domElement.addEventListener("pointerdown", (event) => {
+      if (!headEditing || headBrush.value === "orbit" || event.button !== 0 || headGesture) return;
+      if (headRebuildFrame !== null) rebuildHeadPreview();
+      const hit = pickHeadPoint(event);
+      if (!hit) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      controls.enabled = false;
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), hit.worldPoint);
+      headGesture = {
+        pointerId: event.pointerId, target: headPart.value, mode: headBrush.value,
+        radius: Number(headRadius.value) / 1000, strength: Number(headStrength.value),
+        mirror: document.getElementById("headMirror").checked, center: hit.point,
+        mirrorX: ((headDesign.transforms.all?.x ?? 0) + (headPart.value === "all" ? 0 : headDesign.transforms[headPart.value]?.x ?? 0)) / 1000,
+        plane, lastPlanePoint: hit.worldPoint.clone(), changed: false,
+      };
+      renderer.domElement.setPointerCapture(event.pointerId);
+      if (headGesture.mode !== "move") sculptHeadPointer(event, true);
+    }, true);
+    renderer.domElement.addEventListener("pointermove", (event) => {
+      if (!headEditing) return;
+      if (!headGesture) { if (event.buttons === 0) pickHeadPoint(event); return; }
+      if (event.pointerId !== headGesture.pointerId) return;
+      event.stopImmediatePropagation();
+      pendingHeadPointer = event;
+      if (headPointerFrame !== null) return;
+      headPointerFrame = requestAnimationFrame(() => {
+        headPointerFrame = null;
+        const pointer = pendingHeadPointer;
+        pendingHeadPointer = null;
+        try { sculptHeadPointer(pointer); } catch (error) { finishHeadGesture(); reportHeadError(error); }
+      });
+    }, true);
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      renderer.domElement.addEventListener(type, (event) => {
+        if (headGesture && event.pointerId === headGesture.pointerId) {
+          event.stopImmediatePropagation();
+          finishHeadGesture();
+        }
+      }, true);
+    }
+    renderer.domElement.addEventListener("pointerleave", () => { if (!headGesture) headCursor.visible = false; });
+    window.addEventListener("blur", finishHeadGesture);
+
+    document.getElementById("headEditorToggle").addEventListener("change", (event) => {
+      try { setHeadEditing(event.target.checked); } catch (error) { reportHeadError(error); }
+    });
+    document.querySelectorAll("[data-head-view]").forEach((button) => {
+      button.addEventListener("click", () => setHeadView(button.dataset.headView));
+    });
+    headPart.addEventListener("change", () => { finishHeadGesture(); showHeadControls(); headCursor.visible = false; });
+    headBrush.addEventListener("change", () => {
+      finishHeadGesture();
+      if (headEditing) controls.mouseButtons.LEFT = headBrush.value === "orbit" ? THREE.MOUSE.ROTATE : null;
+      renderer.domElement.style.cursor = headEditing && headBrush.value !== "orbit" ? "crosshair" : "";
+      headCursor.visible = false;
+    });
+    headRadius.addEventListener("input", () => { document.getElementById("headRadiusValue").textContent = `${headRadius.value} mm`; });
+    headStrength.addEventListener("input", () => { document.getElementById("headStrengthValue").textContent = Number(headStrength.value).toFixed(2); });
+
+    function restoreHeadHistory(from, to) {
+      finishHeadGesture();
+      headSliderGesture = false;
+      if (!from.length) return;
+      if (!headEditing) setHeadEditing(true);
+      to.push(structuredClone(headDesign));
+      headDesign = from.pop();
+      rebuildHeadPreview();
+      showHeadControls();
+      saveHeadDesign();
+    }
+    document.getElementById("undoHeadBtn").addEventListener("click", () => restoreHeadHistory(headUndo, headRedo));
+    document.getElementById("redoHeadBtn").addEventListener("click", () => restoreHeadHistory(headRedo, headUndo));
+    document.getElementById("resetHeadBtn").addEventListener("click", () => {
+      finishHeadGesture();
+      if (!headEditing) setHeadEditing(true);
+      rememberHeadDesign();
+      headDesign = structuredClone(defaultHeadDesign);
+      rebuildHeadPreview();
+      showHeadControls();
+      saveHeadDesign();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (!headEditing || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z" ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+      event.preventDefault();
+      restoreHeadHistory(event.shiftKey ? headRedo : headUndo, event.shiftKey ? headUndo : headRedo);
+    });
+    document.getElementById("copyHeadBtn").addEventListener("click", async () => {
+      finishHeadGesture();
+      updateHeadSource();
+      try {
+        await navigator.clipboard.writeText(headSource.value);
+        headStatus.textContent = "Replacement head function copied.";
+      } catch (error) {
+        console.error("Could not copy procedural head:", error);
+        headSource.focus();
+        headSource.select();
+        headStatus.textContent = "Clipboard unavailable. Function selected; copy manually or export .js.";
+      }
+    });
+    document.getElementById("exportHeadBtn").addEventListener("click", () => {
+      finishHeadGesture();
+      updateHeadSource();
+      const url = URL.createObjectURL(new Blob([`${headSource.value}\n`], { type: "text/javascript" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "buildHeadAndFaceParts.js";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      headStatus.textContent = "Replacement head function exported.";
+    });
+    showHeadControls();
+    updateHeadSource();
+    try {
+      const stored = localStorage.getItem(headStorageKey);
+      if (stored) {
+        const design = JSON.parse(stored);
+        validateHeadDesign(design);
+        const preview = character.createHeadPreview(design);
+        character.commitHeadPreview(preview);
+        disposeHeadPreview(preview);
+        headDesign = design;
+        character.headDesign = structuredClone(design);
+        showHeadControls();
+        updateHeadSource();
+        headStatus.textContent = "Previous head edits restored from this browser.";
+      }
+    } catch (error) {
+      console.error("Could not restore head design:", error);
+      headStatus.textContent = "Saved head design could not be restored. Original head retained; reset edits or export a new design.";
+    }
 
     function setActiveGroupBtn(selector, activeEl) {
       document.querySelectorAll(selector).forEach((btn) => {
@@ -3163,6 +3994,7 @@
 
     let camLerp = null;
     function setCameraView(pos, target, activeBtnId) {
+      if (headEditing) setHeadEditing(false);
       camLerp = { pos: new THREE.Vector3(...pos), target: new THREE.Vector3(...target), t: 0 };
       ["camFullBtn", "camFaceBtn", "camHandsBtn"].forEach((id) => {
         const b = document.getElementById(id);
@@ -3197,13 +4029,15 @@
       controlPanel.classList.add("translate-x-[120%]");
     });
 
-    window.addEventListener("resize", () => {
+    function resizePreviewViewport() {
+      container.style.width = headEditing && window.matchMedia("(min-width: 768px)").matches ? "calc(100% - 340px)" : "100%";
       const w = container.clientWidth;
       const h = container.clientHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    });
+    }
+    window.addEventListener("resize", resizePreviewViewport);
 
     const timer = new THREE.Timer();
     timer.connect(document);
@@ -3232,6 +4066,7 @@
       }
 
       character.update(dt, {
+        headEditor: headEditing,
         autoBlink: autoBlinkEl.checked,
         autoGaze: autoGazeEl.checked,
         reachTarget: reachOrb.visible ? reachOrb.position : null,
