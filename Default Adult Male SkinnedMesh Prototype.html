@@ -340,7 +340,7 @@
     <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
       <section class="space-y-3">
         <h2 class="font-semibold text-slate-200">Textures &amp; Materials</h2>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share rest-position pores, anatomical color, and roughness masks. Subsurface scattering is a shadow-aware direct-light wrapped-diffuse/backscatter approximation with estimated thickness, not full diffusion. Skin bump height is in millimeters; base surface properties are independent.</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share non-repeating rest-position tone variation, filtered pores, and anatomical roughness. Pore relief fades below pixel size to stay stable at distance and grazing angles. Subsurface scattering is a shadow-aware direct-light wrapped-diffuse/backscatter approximation with estimated thickness, not full diffusion. Skin bump height is in millimeters; base surface properties are independent.</p>
         <label class="block space-y-1">
           <span class="text-slate-300">Material slot</span>
           <select id="materialSlot" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2"></select>
@@ -360,7 +360,7 @@
           <h2 class="font-semibold text-slate-200">Reusable function</h2>
           <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses skinTileSize in meters, skinPoreDepth (0-2), skinColorVariation, skinRoughnessVariation, skinScattering (0-1), and skinThicknessScale (0.25-4). Thickness masks assume this prototype's meter-scale neutral anatomy; standard shadow maps can suppress self-shadowed backscatter. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses skinTileSize in meters (microdetail only; broad tone does not tile), skinPoreDepth (0-2), skinColorVariation, skinRoughnessVariation, skinScattering (0-1), and skinThicknessScale (0.25-4). Pore relief is footprint-filtered; skinDetail controls pore and tone detail. Thickness masks assume this prototype's meter-scale neutral anatomy; standard shadow maps can suppress self-shadowed backscatter. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
         <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
         <div class="grid grid-cols-2 gap-2">
           <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
@@ -474,7 +474,7 @@
       };
       const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 
-      // Skin: blotchy tone, redness, pores, freckles + matching bump map
+      // Only microdetail tiles; broad tone variation is evaluated in rest-space below.
       function makeSkinTextures(hex) {
         const S = 1024, col = mk(S), bmp = mk(S), [R, G, B] = rgb(hex);
         const poreHeight = new Float32Array(S * S);
@@ -509,14 +509,11 @@
         for (let y = 0; y < S; y++) {
           for (let x = 0; x < S; x++) {
             const u = x / S, v = y / S, i = (y * S + x) * 4;
-            const blotch = fbm(u, v, 3, 3, 1) - 0.5;
-            const red = fbm(u, v, 6, 3, 9) - 0.5;
             const fine = fbm(u, v, 64, 2, 17) - 0.5;
             const wr = fbm(u, v, 24, 3, 23) - 0.5;
-            const fr = Math.max(0, fbm(u, v, 20, 2, 31) - 0.68) * 4;
             const detail = textureSettings.skinDetail;
-            const k = 1 + (blotch * 0.16 + fine * 0.015) * detail;
-            col.img.data.set([R * k + (red * 22 - fr * 10) * detail, G * k - (red * 14 + fr * 16) * detail, B * k - (red * 14 + fr * 20) * detail, 255], i);
+            const k = 1 + (fine * 0.012 + poreHeight[y * S + x] * 0.00015) * detail;
+            col.img.data.set([R * k, G * k, B * k, 255], i);
             const h = 128 + (fine * 12 + wr * 4 + poreHeight[y * S + x] * textureSettings.skinPoreDepth) * detail;
             bmp.img.data.set([h, h, h, 255], i);
           }
@@ -527,6 +524,7 @@
       function applySkinMapping(material) {
         material.onBeforeCompile = (shader) => {
           shader.uniforms.skinTileSize = { value: textureSettings.skinTileSize };
+          shader.uniforms.skinDetail = { value: textureSettings.skinDetail };
           shader.uniforms.skinColorVariation = { value: textureSettings.skinColorVariation };
           shader.uniforms.skinRoughnessVariation = { value: textureSettings.skinRoughnessVariation };
           shader.uniforms.skinScattering = { value: textureSettings.skinScattering };
@@ -546,10 +544,26 @@ vFaceSurface = faceSurface;
 `);
           shader.fragmentShader = varyings + `
 uniform float skinTileSize;
+uniform float skinDetail;
 uniform float skinColorVariation;
 uniform float skinRoughnessVariation;
 uniform float skinScattering;
 uniform float skinThicknessScale;
+float skinHash(vec3 p) {
+  p = fract(p * 0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+float skinNoise(vec3 p) {
+  vec3 cell = floor(p);
+  vec3 f = fract(p);
+  f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  return mix(
+    mix(mix(skinHash(cell), skinHash(cell + vec3(1, 0, 0)), f.x),
+        mix(skinHash(cell + vec3(0, 1, 0)), skinHash(cell + vec3(1, 1, 0)), f.x), f.y),
+    mix(mix(skinHash(cell + vec3(0, 0, 1)), skinHash(cell + vec3(1, 0, 1)), f.x),
+        mix(skinHash(cell + vec3(0, 1, 1)), skinHash(cell + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
 float skinEllipse(float x, float y, float cx, float cy, float rx, float ry) {
   vec2 d = (vec2(x, y) - vec2(cx, cy)) / vec2(rx, ry);
   return exp(-dot(d, d) * 0.5);
@@ -581,9 +595,17 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
   vec3 weights = pow(abs(normalize(vSkinRestNormal)), vec3(4.0));
   weights /= max(weights.x + weights.y + weights.z, 0.00001);
   vec3 p = restPosition / skinTileSize;
-  return texture2D(skinTexture, p.yz) * weights.x
-       + texture2D(skinTexture, p.xz) * weights.y
-       + texture2D(skinTexture, p.xy) * weights.z;
+  // All height samples need the same footprint, including the offset bump samples.
+  vec3 dx = dFdx(vSkinRestPosition) / skinTileSize;
+  vec3 dy = dFdy(vSkinRestPosition) / skinTileSize;
+  mat2 rotate = mat2(0.8, 0.6, -0.6, 0.8);
+  return textureGrad(skinTexture, rotate * p.yz + vec2(0.17, 0.43), rotate * dx.yz, rotate * dy.yz) * weights.x
+       + textureGrad(skinTexture, rotate * p.xz + vec2(0.53, 0.29), rotate * dx.xz, rotate * dy.xz) * weights.y
+       + textureGrad(skinTexture, rotate * p.xy + vec2(0.31, 0.71), rotate * dx.xy, rotate * dy.xy) * weights.z;
+}
+float skinPoreVisibility() {
+  float footprint = max(length(dFdx(vSkinRestPosition)), length(dFdy(vSkinRestPosition)));
+  return 1.0 - smoothstep(0.25, 1.25, footprint / (skinTileSize / 112.0));
 }
 float handCreases(vec3 p) {
   float side = sign(p.x);
@@ -620,6 +642,10 @@ ${["spread", "base", "L"].map((k) => `    float ${k === "L" ? "len" : k} = ${han
 ${THREE.ShaderChunk.map_fragment.replace(
   "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )")}
 vec3 skinMasks = skinRegionMasks(vSkinRestPosition);
+float skinMottle = skinNoise(vSkinRestPosition * 18.0 + vec3(7.1, 3.8, 1.4)) - 0.5;
+float skinFlush = skinNoise(vSkinRestPosition * 43.0 + vec3(1.7, 9.2, 5.3)) - 0.5;
+diffuseColor.rgb *= 1.0 + skinColorVariation * skinDetail
+  * (skinMottle * 0.055 + skinFlush * vec3(0.035, -0.020, -0.025));
 diffuseColor.rgb *= mix(vec3(1.0), vec3(1.035, 0.955, 0.935), skinMasks.x * skinColorVariation);
 diffuseColor.rgb *= 1.0 - handCreases(vSkinRestPosition) * 0.13 * skinColorVariation;
 float nostrilV = vFaceSurface.y - 1.6205;
@@ -634,7 +660,8 @@ diffuseColor.rgb *= mix(vec3(1.0), vec3(0.12, 0.065, 0.055), nostrilDark);
           shader.fragmentShader = shader.fragmentShader.replace("#include <roughnessmap_fragment>", `
 ${THREE.ShaderChunk.roughnessmap_fragment}
 roughnessFactor = clamp(
-  roughnessFactor + skinRoughnessVariation * (-0.075 * skinMasks.y + 0.025 * skinMasks.z),
+  roughnessFactor + skinRoughnessVariation
+    * (-0.075 * skinMasks.y + 0.025 * skinMasks.z + skinMottle * 0.035 + skinFlush * 0.015),
   0.04, 1.0
 );
 `);
@@ -646,9 +673,9 @@ roughnessFactor = clamp(
             .replace("texture2D( bumpMap, vBumpMapUv + dSTdy )", "sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy )");
           // Retain surface derivative lengths so bumpScale represents height in scene units.
           bumpChunk = bumpChunk
-            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition ).x - handCreases(vSkinRestPosition) * 0.18)")
-            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x - handCreases(vSkinRestPosition + dSTdx) * 0.18)")
-            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x - handCreases(vSkinRestPosition + dSTdy) * 0.18)")
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition ).x * skinPoreVisibility() - handCreases(vSkinRestPosition) * 0.18)")
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x * skinPoreVisibility() - handCreases(vSkinRestPosition + dSTdx) * 0.18)")
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x * skinPoreVisibility() - handCreases(vSkinRestPosition + dSTdy) * 0.18)")
             .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
             .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
           shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
@@ -679,7 +706,7 @@ vec3 skinDiffuseIrradiance = mix(
 reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
 `));
         };
-        material.customProgramCacheKey = () => "skin-rest-triplanar-v6-hand-creases";
+        material.customProgramCacheKey = () => "skin-rest-triplanar-v7-filtered-tone";
       }
 
       // Fabric: plain weave threads with fuzz + bump
@@ -874,10 +901,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       // 4: Eyeball, 5: Head Skin, 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Gums, 10: Tongue, 11: Nails
       const materials = [
         new THREE.MeshPhysicalMaterial({
-          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004,
-          roughness: 0.60, metalness: 0.0, vertexColors: true,
-          sheen: 0.22, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.85,
-          clearcoat: 0.06, clearcoatRoughness: 0.55,
+          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.00025,
+          roughness: 0.56, metalness: 0.0, vertexColors: true, ior: 1.4,
+          sheen: 0.08, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.85,
+          clearcoat: 0.025, clearcoatRoughness: 0.55,
         }),
         new THREE.MeshPhysicalMaterial({
           map: shirtTex.map, bumpMap: shirtTex.bump, bumpScale: 1.5,
@@ -898,10 +925,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           clearcoat: 1.0, clearcoatRoughness: 0.02, ior: 1.38, envMapIntensity: 1.3,
         }),
         new THREE.MeshPhysicalMaterial({
-          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004, vertexColors: true,
-          roughness: 0.58, metalness: 0.0,
-          sheen: 0.25, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.82,
-          clearcoat: 0.08, clearcoatRoughness: 0.48,
+          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.00025, vertexColors: true,
+          roughness: 0.54, metalness: 0.0, ior: 1.4,
+          sheen: 0.10, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.82,
+          clearcoat: 0.035, clearcoatRoughness: 0.48,
         }),
         new THREE.MeshPhysicalMaterial({
           map: enamelTex.map, bumpMap: enamelTex.bump, bumpScale: 0.000025,
