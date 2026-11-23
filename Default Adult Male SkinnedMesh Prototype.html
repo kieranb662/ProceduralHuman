@@ -292,7 +292,7 @@
       </section>
       <section class="space-y-2">
         <h2 class="font-semibold text-slate-200">Facial contour adjustments</h2>
-        <p class="text-[11px] text-slate-400">Signed millimeter offsets sculpt the neutral face, not an expression.</p>
+        <p class="text-[11px] text-slate-400">Signed millimeter offsets sculpt the neutral face, not an expression. The nose and lips use dense contour sampling; smooth recessed nostril shading follows the sculpt and facial animation.</p>
         <div id="headFeatureControls" class="space-y-2"></div>
       </section>
       <section class="space-y-2">
@@ -357,6 +357,13 @@
 
     const gauss = (dx, dy, dz, sx, sy, sz) =>
       Math.exp(-(dx * dx) / (2 * sx * sx) - (dy * dy) / (2 * sy * sy) - (dz * dz) / (2 * sz * sz));
+
+    // One nostril (ax = |x|): a teardrop whose axis converges toward the nose tip and narrows at the front.
+    const nostrilField = (ax, y) => {
+      const v = y - 1.6205;
+      const width = 0.0034 * (1 - 0.38 * Math.tanh(v / 0.0030));
+      return gauss(ax - 0.0074 + v * 0.42, v, 0, width, 0.0036, 1);
+    };
 
     const FACS_MORPH_NAMES = [
       "browInnerUp", "browOuterUp_L", "browOuterUp_R", "browDown_L", "browDown_R",
@@ -499,12 +506,14 @@
           const varyings = `
 varying vec3 vSkinRestPosition;
 varying vec3 vSkinRestNormal;
+varying vec3 vFaceSurface;
 `;
-          shader.vertexShader = varyings + shader.vertexShader;
+          shader.vertexShader = "attribute vec3 faceSurface;\n" + varyings + shader.vertexShader;
           // Capture before morphing/skinning so animation cannot move the texture through the skin.
           shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `
 vSkinRestPosition = position;
 vSkinRestNormal = normal;
+vFaceSurface = faceSurface;
 #include <begin_vertex>
 `);
           shader.fragmentShader = varyings + `
@@ -554,6 +563,14 @@ ${THREE.ShaderChunk.map_fragment.replace(
   "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )")}
 vec3 skinMasks = skinRegionMasks(vSkinRestPosition);
 diffuseColor.rgb *= mix(vec3(1.0), vec3(1.035, 0.955, 0.935), skinMasks.x * skinColorVariation);
+float nostrilV = vFaceSurface.y - 1.6205;
+// Teardrop openings: axes converge toward the tip and narrow at the front, as in nostrilField().
+vec2 nostrilCoord = vec2(
+  (abs(vFaceSurface.x) - 0.0074 + nostrilV * 0.42) / (0.0034 * (1.0 - 0.38 * tanh(nostrilV / 0.0030))),
+  nostrilV / 0.0036);
+float nostrilPit = exp(-dot(nostrilCoord, nostrilCoord));
+float nostrilDark = smoothstep(0.20, 0.85, nostrilPit) * vFaceSurface.z;
+diffuseColor.rgb *= mix(vec3(1.0), vec3(0.12, 0.065, 0.055), nostrilDark);
 `);
           shader.fragmentShader = shader.fragmentShader.replace("#include <roughnessmap_fragment>", `
 ${THREE.ShaderChunk.roughnessmap_fragment}
@@ -600,7 +617,7 @@ vec3 skinDiffuseIrradiance = mix(
 reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
 `));
         };
-        material.customProgramCacheKey = () => "skin-rest-triplanar-v3-pores-scattering";
+        material.customProgramCacheKey = () => "skin-rest-triplanar-v5-teardrop-nostrils";
       }
 
       // Fabric: plain weave threads with fuzz + bump
@@ -977,6 +994,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const col = new Float32Array(count * 3);
         col.fill(1);
         geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+      }
+      if (!geo.attributes.faceSurface) {
+        geo.setAttribute("faceSurface", new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
       }
       return geo;
     }
@@ -1793,12 +1813,27 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         return z;
       };
 
-      const latSegs = 104;
-      const lonSegs = 112;
+      // Keep the skull grid, concentrating sub-millimeter samples on the facial contours.
+      const thetaSamples = Array.from({ length: 105 }, (_, r) => {
+        const v = r / 104;
+        return THREE.MathUtils.clamp((v - 0.055 * Math.sin(v * Math.PI * 2)) * Math.PI, 0.001, Math.PI - 0.001);
+      });
+      for (let y = 1.578; y <= 1.678; y += 0.0005) {
+        thetaSamples.push(Math.acos((y - headCenter.y) / 0.120));
+      }
+      const phiSamples = Array.from({ length: 113 }, (_, c) => (c / 112 - 0.5) * Math.PI * 2);
+      for (let c = -72; c <= 72; c++) phiSamples.push(c * 0.0075);
+      const sortedSamples = (samples) => samples.sort((a, b) => a - b)
+        .filter((value, i, sorted) => i === 0 || value - sorted[i - 1] > 0.0001);
+      const thetas = sortedSamples(thetaSamples);
+      const phis = sortedSamples(phiSamples);
+      const latSegs = thetas.length - 1;
+      const lonSegs = phis.length - 1;
       const stride = lonSegs + 1;
       const positions = [];
       const uvs = [];
       const colors = [];
+      const faceSurface = [];
       const skinIdx = [];
       const skinWgt = [];
       const indices = [];
@@ -1821,15 +1856,14 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const bNosR = boneIndex.get("Nostril_R");
 
       for (let r = 0; r <= latSegs; r++) {
-        const v = r / latSegs;
-        const vDense = v - 0.055 * Math.sin(v * Math.PI * 2);
-        const theta = Math.max(0.001, Math.min(Math.PI - 0.001, vDense * Math.PI));
+        const theta = thetas[r];
+        const v = theta / Math.PI;
         const sinT = Math.sin(theta);
         const cosT = Math.cos(theta);
 
         for (let c = 0; c <= lonSegs; c++) {
-          const u = c / lonSegs;
-          const phi = (u - 0.5) * Math.PI * 2;
+          const phi = phis[c];
+          const u = phi / (Math.PI * 2) + 0.5;
           const sinP = Math.sin(phi);
           const cosP = Math.cos(phi);
 
@@ -1878,7 +1912,6 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           let dx = 0, dy = 0, dz = 0;
           let lipMask = 0;
           let mouthPocket = 0;
-          let nostrilShade = 0;
 
           const faceRegionMask = smoothstep(0.05, 0.32, cosP);
           if (faceRegionMask > 0.001) {
@@ -1894,16 +1927,16 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
             const sock = Math.max(sockL, sockR);
             dz -= sock * 0.0165 * faceRegionMask;
 
-            const bridge = gauss(wx0, wy0 - 1.653, 0, 0.0095, 0.019, 1);
-            const noseTip = gauss(wx0, wy0 - 1.631, 0, 0.0125, 0.0105, 1);
+            const bridge = gauss(wx0, wy0 - 1.653, 0, 0.0105, 0.021, 1);
+            const noseTip = gauss(wx0, wy0 - 1.633, 0, 0.0130, 0.0110, 1);
             const alaL = gauss(wx0 - 0.0135, wy0 - 1.6245, 0, 0.0075, 0.0060, 1);
             const alaR = gauss(wx0 + 0.0135, wy0 - 1.6245, 0, 0.0075, 0.0060, 1);
-            const nostrilPit =
-              gauss(wx0 - 0.0076, wy0 - 1.6215, 0, 0.0036, 0.0026, 1) +
-              gauss(wx0 + 0.0076, wy0 - 1.6215, 0, 0.0036, 0.0026, 1);
-            dz += (bridge * 0.0085 + noseTip * 0.0135 + (alaL + alaR) * 0.0085 - nostrilPit * 0.0065) * faceRegionMask;
-            dy += (-noseTip * 0.0018 + nostrilPit * 0.0050) * faceRegionMask;
-            nostrilShade = Math.min(1, nostrilPit * 1.15 * faceRegionMask);
+            const nostrilPit = nostrilField(Math.abs(wx0), wy0);
+            const columella = gauss(wx0, wy0 - 1.6205, 0, 0.0030, 0.0050, 1);
+            dz += (bridge * 0.0135 + noseTip * 0.0220 + (alaL + alaR) * 0.0100 +
+              columella * 0.0040 - nostrilPit * 0.0085) * faceRegionMask;
+            // Recess in depth only: lifting a narrow pit folds the surface over its rim.
+            dy -= noseTip * 0.0012 * faceRegionMask;
 
             const philtrum = gauss(wx0, wy0 - 1.612, 0, 0.0055, 0.0075, 1);
             dz -= philtrum * 0.0022 * faceRegionMask;
@@ -1912,16 +1945,19 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
             const mxNorm = Math.abs(wx0) / mouthWidth;
             if (mxNorm < 1.35 && Math.abs(wy0 - mouthY) < 0.028) {
               const along = smoothstep(1.22, 0.0, mxNorm);
-              const cupidsBow = 0.0018 * Math.cos(wx0 * 145) * along * along;
+              const cupidsBow = (0.0014 * (
+                gauss(wx0 - 0.006, 0, 0, 0.0045, 1, 1) +
+                gauss(wx0 + 0.006, 0, 0, 0.0045, 1, 1)) -
+                0.0008 * gauss(wx0, 0, 0, 0.0035, 1, 1)) * along;
               const uLipY = mouthY + 0.0062 * along + cupidsBow;
               const lLipY = mouthY - 0.0070 * along;
 
-              const uLip = Math.exp(-Math.pow((wy0 - uLipY) / 0.0052, 2)) * along;
+              const uLip = Math.exp(-Math.pow((wy0 - uLipY) / 0.0056, 2)) * along;
               const lLip = Math.exp(-Math.pow((wy0 - lLipY) / 0.0058, 2)) * along;
               const seam = Math.exp(-Math.pow((wy0 - mouthY) / 0.0024, 2)) * Math.pow(along, 0.7);
-              const uBorder = Math.exp(-Math.pow((wy0 - (uLipY + 0.0032)) / 0.0022, 2)) * along * 0.4;
+              const uBorder = Math.exp(-Math.pow((wy0 - (uLipY + 0.0032)) / 0.0030, 2)) * along * 0.4;
 
-              dz += (uLip * 0.0115 + lLip * 0.0125 + uBorder * 0.0022 - seam * 0.0145) * faceRegionMask;
+              dz += (uLip * 0.0100 + lLip * 0.0125 + uBorder * 0.0016 - seam * 0.0145) * faceRegionMask;
               lipMask = Math.min(1, Math.pow(Math.min(1, (uLip + lLip) * 1.18), 0.78) * faceRegionMask);
               mouthPocket = seam * faceRegionMask;
             }
@@ -1957,6 +1993,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           const fz = wz0 + dz;
           positions.push(fx, fy, fz);
           uvs.push(u, 1 - v);
+          faceSurface.push(wx0, wy0, faceRegionMask);
 
           let cr = 1.0, cg = 1.0, cb = 1.0;
           if (lipMask > 0.04) {
@@ -1970,12 +2007,6 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
             cr = THREE.MathUtils.lerp(cr, 0.24, p);
             cg = THREE.MathUtils.lerp(cg, 0.09, p);
             cb = THREE.MathUtils.lerp(cb, 0.10, p);
-          }
-          if (nostrilShade > 0.08) {
-            const ns = smoothstep(0.08, 0.75, nostrilShade);
-            cr = THREE.MathUtils.lerp(cr, 0.18, ns);
-            cg = THREE.MathUtils.lerp(cg, 0.10, ns);
-            cb = THREE.MathUtils.lerp(cb, 0.08, ns);
           }
           // Skin tone detail: cheek flush, nose redness, under-eye shading, eye sockets, light stubble
           {
@@ -2070,6 +2101,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         }
       }
       const headGeo = buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, indices);
+      headGeo.setAttribute("faceSurface", new THREE.Float32BufferAttribute(faceSurface, 3));
       weldSeamNormals(headGeo, latSegs + 1, lonSegs);
 
       // Trace the real boundary loop of the mouth opening so the inner mouth shares the lips' exact vertices
