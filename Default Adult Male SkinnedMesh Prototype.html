@@ -1410,11 +1410,12 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           [bi(`Deltoid_${side}`), shoulder * 0.35], [bi(`Thigh_${side}`), hip]]);
       };
       const table = [
-        { y: 0.89, rx: 0.179, rz: 0.105, cz: -0.002 },
-        { y: 0.94, rx: 0.185, rz: 0.113, cz: -0.004 },
-        { y: 1.00, rx: 0.162, rz: 0.106, cz: 0 },
-        { y: 1.08, rx: 0.151, rz: 0.102, cz: 0.003 },
-        { y: 1.16, rx: 0.163, rz: 0.111, cz: 0.004 },
+        // Taper from the thigh junction into the waist without a lateral hip shelf.
+        { y: 0.89, rx: 0.172, rz: 0.105, cz: -0.002 },
+        { y: 0.94, rx: 0.166, rz: 0.113, cz: -0.004 },
+        { y: 1.00, rx: 0.151, rz: 0.106, cz: 0 },
+        { y: 1.08, rx: 0.139, rz: 0.102, cz: 0.003 },
+        { y: 1.16, rx: 0.156, rz: 0.111, cz: 0.004 },
         { y: 1.25, rx: 0.182, rz: 0.120, cz: 0.007 },
         { y: 1.33, rx: 0.194, rz: 0.119, cz: 0.005 },
         { y: 1.39, rx: 0.201, rz: 0.108, cz: 0 },
