@@ -313,7 +313,7 @@
     <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
       <section class="space-y-3">
         <h2 class="font-semibold text-slate-200">Textures &amp; Materials</h2>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share the skin texture; their surface properties are independent.</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share rest-position skin mapping at the same physical scale, independent of UVs. Skin bump height is in millimeters; surface properties are independent.</p>
         <label class="block space-y-1">
           <span class="text-slate-300">Material slot</span>
           <select id="materialSlot" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2"></select>
@@ -333,7 +333,7 @@
           <h2 class="font-semibold text-slate-200">Reusable function</h2>
           <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index].</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses palette.textures.skinTileSize in meters instead of UV repeat X/Y; geometry must use meter units. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
         <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
         <div class="grid grid-cols-2 gap-2">
           <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
@@ -390,10 +390,13 @@
       const hairHex = palette.hair ?? "#241c18";
       const textureSettings = {
         skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
-        skinRepeatX: 3, skinRepeatY: 3, shirtRepeatX: 10, shirtRepeatY: 10,
+        skinTileSize: 0.064, shirtRepeatX: 10, shirtRepeatY: 10,
         shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
         ...palette.textures,
       };
+      if (!Number.isFinite(textureSettings.skinTileSize) || textureSettings.skinTileSize <= 0) {
+        throw new RangeError("palette.textures.skinTileSize must be a positive finite size in meters.");
+      }
 
       // Tileable value-noise helpers
       const hash2 = (x, y, s) => { const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453; return h - Math.floor(h); };
@@ -446,8 +449,50 @@
             bmp.img.data.set([h, h, h, 255], i);
           }
         }
-        const repeat = [textureSettings.skinRepeatX, textureSettings.skinRepeatY];
-        return { map: finish(col, true, repeat), bump: finish(bmp, false, repeat) };
+        return { map: finish(col, true, [1, 1]), bump: finish(bmp, false, [1, 1]) };
+      }
+
+      function applySkinMapping(material) {
+        material.onBeforeCompile = (shader) => {
+          shader.uniforms.skinTileSize = { value: textureSettings.skinTileSize };
+          const varyings = `
+varying vec3 vSkinRestPosition;
+varying vec3 vSkinRestNormal;
+`;
+          shader.vertexShader = varyings + shader.vertexShader;
+          // Capture before morphing/skinning so animation cannot move the texture through the skin.
+          shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `
+vSkinRestPosition = position;
+vSkinRestNormal = normal;
+#include <begin_vertex>
+`);
+          shader.fragmentShader = varyings + `
+uniform float skinTileSize;
+vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
+  vec3 weights = pow(abs(normalize(vSkinRestNormal)), vec3(4.0));
+  weights /= max(weights.x + weights.y + weights.z, 0.00001);
+  vec3 p = restPosition / skinTileSize;
+  return texture2D(skinTexture, p.yz) * weights.x
+       + texture2D(skinTexture, p.xz) * weights.y
+       + texture2D(skinTexture, p.xy) * weights.z;
+}
+` + shader.fragmentShader;
+          shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>",
+            THREE.ShaderChunk.map_fragment.replace(
+              "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )"));
+          let bumpChunk = THREE.ShaderChunk.bumpmap_pars_fragment
+            .replace("vec2 dSTdx = dFdx( vBumpMapUv );", "vec3 dSTdx = dFdx( vSkinRestPosition );")
+            .replace("vec2 dSTdy = dFdy( vBumpMapUv );", "vec3 dSTdy = dFdy( vSkinRestPosition );")
+            .replace("texture2D( bumpMap, vBumpMapUv )", "sampleSkinTexture( bumpMap, vSkinRestPosition )")
+            .replace("texture2D( bumpMap, vBumpMapUv + dSTdx )", "sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx )")
+            .replace("texture2D( bumpMap, vBumpMapUv + dSTdy )", "sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy )");
+          // Retain surface derivative lengths so bumpScale represents height in scene units.
+          bumpChunk = bumpChunk
+            .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
+            .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
+          shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
+        };
+        material.customProgramCacheKey = () => "skin-rest-triplanar-v1";
       }
 
       // Fabric: plain weave threads with fuzz + bump
@@ -616,7 +661,7 @@
       // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Tongue
       const materials = [
         new THREE.MeshPhysicalMaterial({
-          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 1.2,
+          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004,
           roughness: 0.60, metalness: 0.0,
           sheen: 0.22, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.85,
           clearcoat: 0.06, clearcoatRoughness: 0.55,
@@ -640,7 +685,7 @@
           clearcoat: 1.0, clearcoatRoughness: 0.02, ior: 1.38, envMapIntensity: 1.3,
         }),
         new THREE.MeshPhysicalMaterial({
-          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 1.2, vertexColors: true,
+          map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004, vertexColors: true,
           roughness: 0.58, metalness: 0.0,
           sheen: 0.25, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.82,
           clearcoat: 0.08, clearcoatRoughness: 0.48,
@@ -657,6 +702,7 @@
       ];
       materials.forEach((material, index) => {
         if (palette.materials?.[index]) material.setValues(palette.materials[index]);
+        if (index === 0 || index === 5) applySkinMapping(material);
       });
       return materials;
     }
@@ -3671,7 +3717,7 @@
       skin: "#c68b59", shirt: "#2e5a88", shorts: "#4a4e4d", hair: "#241c18",
       textures: {
         skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
-        skinRepeatX: 3, skinRepeatY: 3, shirtRepeatX: 10, shirtRepeatY: 10,
+        skinTileSize: 0.064, shirtRepeatX: 10, shirtRepeatY: 10,
         shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
       },
       materials: character.skinnedMesh.material.map((material, index) => {
@@ -3839,7 +3885,14 @@
             materialPalette.textures[detailKey] = value;
             scheduleMaterialRefresh();
           });
-        for (const axis of ["X", "Y"]) {
+        if (textureKey === "skin") {
+          addParameterSlider(textureControls, "skinTileSize", "Skin tile size (mm)", 16, 256, 1,
+            materialPalette.textures.skinTileSize * 1000, (value) => {
+              materialPalette.textures.skinTileSize = value / 1000;
+              scheduleMaterialRefresh();
+            });
+        }
+        for (const axis of textureKey === "skin" ? [] : ["X", "Y"]) {
           const key = `${textureKey}Repeat${axis}`;
           addParameterSlider(textureControls, key, `Texture tiling ${axis}`, 1, 30, 0.1, materialPalette.textures[key], (value) => {
             materialPalette.textures[key] = value;
@@ -3856,6 +3909,16 @@
       }
       for (const [key, label, min, max, step] of surfaceDefs) {
         if (!(key in materialPalette.materials[index])) continue;
+        if (textureKey === "skin" && key === "bumpScale") {
+          addParameterSlider(surfaceControls, key, "Bump height (mm)", 0, 1, 0.01,
+            materialPalette.materials[index][key] * 1000, (value) => {
+              materialPalette.materials[index][key] = value / 1000;
+              character.skinnedMesh.material[index].bumpScale = value / 1000;
+              updateMaterialSource();
+              materialStatus.textContent = "Preview updated.";
+            });
+          continue;
+        }
         addParameterSlider(surfaceControls, key, label, min, max, step, materialPalette.materials[index][key], (value) => {
           materialPalette.materials[index][key] = value;
           character.skinnedMesh.material[index].setValues({ [key]: value });
