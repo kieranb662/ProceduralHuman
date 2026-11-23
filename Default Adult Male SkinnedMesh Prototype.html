@@ -313,7 +313,7 @@
     <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
       <section class="space-y-3">
         <h2 class="font-semibold text-slate-200">Textures &amp; Materials</h2>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share rest-position skin mapping at the same physical scale, independent of UVs. Skin bump height is in millimeters; surface properties are independent.</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share rest-position pores, anatomical color, and roughness masks. Subsurface scattering is a shadow-aware direct-light wrapped-diffuse/backscatter approximation with estimated thickness, not full diffusion. Skin bump height is in millimeters; base surface properties are independent.</p>
         <label class="block space-y-1">
           <span class="text-slate-300">Material slot</span>
           <select id="materialSlot" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2"></select>
@@ -333,7 +333,7 @@
           <h2 class="font-semibold text-slate-200">Reusable function</h2>
           <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses palette.textures.skinTileSize in meters instead of UV repeat X/Y; geometry must use meter units. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses skinTileSize in meters, skinPoreDepth (0-2), skinColorVariation, skinRoughnessVariation, skinScattering (0-1), and skinThicknessScale (0.25-4). Thickness masks assume this prototype's meter-scale neutral anatomy; standard shadow maps can suppress self-shadowed backscatter. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
         <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
         <div class="grid grid-cols-2 gap-2">
           <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
@@ -389,13 +389,22 @@
       const shortsHex = palette.shorts ?? "#4a4e4d";
       const hairHex = palette.hair ?? "#241c18";
       const textureSettings = {
-        skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
+        skinDetail: 1, skinColorVariation: 1, skinRoughnessVariation: 1,
+        skinPoreDepth: 1, skinScattering: 0.35, skinThicknessScale: 1,
+        shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
         skinTileSize: 0.064, shirtRepeatX: 10, shirtRepeatY: 10,
         shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
         ...palette.textures,
       };
       if (!Number.isFinite(textureSettings.skinTileSize) || textureSettings.skinTileSize <= 0) {
         throw new RangeError("palette.textures.skinTileSize must be a positive finite size in meters.");
+      }
+      for (const [key, min, max] of [
+        ["skinPoreDepth", 0, 2], ["skinScattering", 0, 1], ["skinThicknessScale", 0.25, 4],
+      ]) {
+        if (!Number.isFinite(textureSettings[key]) || textureSettings[key] < min || textureSettings[key] > max) {
+          throw new RangeError(`palette.textures.${key} must be between ${min} and ${max}.`);
+        }
       }
 
       // Tileable value-noise helpers
@@ -432,7 +441,36 @@
 
       // Skin: blotchy tone, redness, pores, freckles + matching bump map
       function makeSkinTextures(hex) {
-        const S = 512, col = mk(S), bmp = mk(S), [R, G, B] = rgb(hex);
+        const S = 1024, col = mk(S), bmp = mk(S), [R, G, B] = rgb(hex);
+        const poreHeight = new Float32Array(S * S);
+        const cells = 112;
+        for (let cy = 0; cy < cells; cy++) {
+          for (let cx = 0; cx < cells; cx++) {
+            if (hash2(cx, cy, 41) > 0.88) continue;
+            const px = (cx + 0.1 + hash2(cx, cy, 42) * 0.8) * S / cells;
+            const py = (cy + 0.1 + hash2(cx, cy, 43) * 0.8) * S / cells;
+            const rx = (0.7 + hash2(cx, cy, 44) * 0.8) * S / 512;
+            const ry = rx * (0.55 + hash2(cx, cy, 45) * 0.45);
+            const angle = hash2(cx, cy, 46) * Math.PI * 2;
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            const depth = 14 + hash2(cx, cy, 47) * 18;
+            const radius = Math.ceil(rx * 1.5);
+            // Wrap stamps across tile edges; the same pore spans both sides of the seam.
+            for (let y = Math.floor(py) - radius; y <= Math.ceil(py) + radius; y++) {
+              for (let x = Math.floor(px) - radius; x <= Math.ceil(px) + radius; x++) {
+                const dx = x + 0.5 - px, dy = y + 0.5 - py;
+                const u = (dx * cos + dy * sin) / rx;
+                const v = (-dx * sin + dy * cos) / ry;
+                const r2 = u * u + v * v;
+                if (r2 >= 2.25) continue;
+                const depression = Math.pow(Math.max(0, 1 - r2), 2);
+                const rim = Math.exp(-Math.pow((Math.sqrt(r2) - 1.05) / 0.18, 2)) * 0.06;
+                const i = ((y + S) % S) * S + (x + S) % S;
+                poreHeight[i] += depth * (rim - depression);
+              }
+            }
+          }
+        }
         for (let y = 0; y < S; y++) {
           for (let x = 0; x < S; x++) {
             const u = x / S, v = y / S, i = (y * S + x) * 4;
@@ -440,12 +478,11 @@
             const red = fbm(u, v, 6, 3, 9) - 0.5;
             const fine = fbm(u, v, 64, 2, 17) - 0.5;
             const wr = fbm(u, v, 24, 3, 23) - 0.5;
-            const pore = Math.max(0, vnoise(u * 128, v * 128, 128, 5) - 0.8) * 5;
             const fr = Math.max(0, fbm(u, v, 20, 2, 31) - 0.68) * 4;
             const detail = textureSettings.skinDetail;
-            const k = 1 + (blotch * 0.16 + fine * 0.06 - pore * 0.12) * detail;
-            col.img.data.set([R * k + (red * 22 - fr * 10) * detail, G * k - (red * 14 + fr * 16 + pore * 4) * detail, B * k - (red * 14 + fr * 20) * detail, 255], i);
-            const h = 128 + (fine * 60 + wr * 40 - pore * 110) * detail;
+            const k = 1 + (blotch * 0.16 + fine * 0.015) * detail;
+            col.img.data.set([R * k + (red * 22 - fr * 10) * detail, G * k - (red * 14 + fr * 16) * detail, B * k - (red * 14 + fr * 20) * detail, 255], i);
+            const h = 128 + (fine * 12 + wr * 4 + poreHeight[y * S + x] * textureSettings.skinPoreDepth) * detail;
             bmp.img.data.set([h, h, h, 255], i);
           }
         }
@@ -455,6 +492,10 @@
       function applySkinMapping(material) {
         material.onBeforeCompile = (shader) => {
           shader.uniforms.skinTileSize = { value: textureSettings.skinTileSize };
+          shader.uniforms.skinColorVariation = { value: textureSettings.skinColorVariation };
+          shader.uniforms.skinRoughnessVariation = { value: textureSettings.skinRoughnessVariation };
+          shader.uniforms.skinScattering = { value: textureSettings.skinScattering };
+          shader.uniforms.skinThicknessScale = { value: textureSettings.skinThicknessScale };
           const varyings = `
 varying vec3 vSkinRestPosition;
 varying vec3 vSkinRestNormal;
@@ -468,6 +509,37 @@ vSkinRestNormal = normal;
 `);
           shader.fragmentShader = varyings + `
 uniform float skinTileSize;
+uniform float skinColorVariation;
+uniform float skinRoughnessVariation;
+uniform float skinScattering;
+uniform float skinThicknessScale;
+float skinEllipse(float x, float y, float cx, float cy, float rx, float ry) {
+  vec2 d = (vec2(x, y) - vec2(cx, cy)) / vec2(rx, ry);
+  return exp(-dot(d, d) * 0.5);
+}
+vec3 skinRegionMasks(vec3 p) {
+  float face = smoothstep(1.53, 1.57, p.y) * (1.0 - smoothstep(1.73, 1.77, p.y))
+             * smoothstep(0.045, 0.085, p.z);
+  float cheeks = skinEllipse(abs(p.x), p.y, 0.050, 1.638, 0.028, 0.026) * face;
+  float nose = skinEllipse(p.x, p.y, 0.0, 1.636, 0.018, 0.031) * face;
+  float forehead = skinEllipse(p.x, p.y, 0.0, 1.700, 0.060, 0.034) * face;
+  float ears = skinEllipse(abs(p.x), p.y, 0.116, 1.640, 0.022, 0.038);
+  float elbows = skinEllipse(abs(p.x), p.y, 0.390, 0.960, 0.065, 0.090);
+  float knees = skinEllipse(abs(p.x), p.y, 0.105, 0.520, 0.050, 0.075);
+  float joints = clamp(elbows + knees, 0.0, 1.0);
+  float warmth = clamp(cheeks * 0.58 + nose * 0.75 + ears * 0.62 + joints * 0.22, 0.0, 1.0);
+  float oil = clamp(nose * 0.90 + forehead * 0.68 + cheeks * 0.12, 0.0, 1.0);
+  return vec3(warmth, oil, joints);
+}
+float skinThicknessMm(vec3 p) {
+  float ears = smoothstep(0.088, 0.103, abs(p.x))
+             * skinEllipse(abs(p.x), p.y, 0.108, 1.640, 0.024, 0.038);
+  float nose = smoothstep(0.115, 0.135, p.z)
+             * skinEllipse(p.x, p.y, 0.0, 1.631, 0.016, 0.018);
+  float hands = skinEllipse(abs(p.x), p.y, 0.560, 0.995, 0.075, 0.085);
+  float thin = clamp(max(ears, max(nose * 0.55, hands * 0.45)), 0.0, 1.0);
+  return mix(12.0, 1.5, thin) * skinThicknessScale;
+}
 vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
   vec3 weights = pow(abs(normalize(vSkinRestNormal)), vec3(4.0));
   weights /= max(weights.x + weights.y + weights.z, 0.00001);
@@ -477,9 +549,19 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
        + texture2D(skinTexture, p.xy) * weights.z;
 }
 ` + shader.fragmentShader;
-          shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>",
-            THREE.ShaderChunk.map_fragment.replace(
-              "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )"));
+          shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", `
+${THREE.ShaderChunk.map_fragment.replace(
+  "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )")}
+vec3 skinMasks = skinRegionMasks(vSkinRestPosition);
+diffuseColor.rgb *= mix(vec3(1.0), vec3(1.035, 0.955, 0.935), skinMasks.x * skinColorVariation);
+`);
+          shader.fragmentShader = shader.fragmentShader.replace("#include <roughnessmap_fragment>", `
+${THREE.ShaderChunk.roughnessmap_fragment}
+roughnessFactor = clamp(
+  roughnessFactor + skinRoughnessVariation * (-0.075 * skinMasks.y + 0.025 * skinMasks.z),
+  0.04, 1.0
+);
+`);
           let bumpChunk = THREE.ShaderChunk.bumpmap_pars_fragment
             .replace("vec2 dSTdx = dFdx( vBumpMapUv );", "vec3 dSTdx = dFdx( vSkinRestPosition );")
             .replace("vec2 dSTdy = dFdy( vBumpMapUv );", "vec3 dSTdy = dFdy( vSkinRestPosition );")
@@ -491,8 +573,34 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
             .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
             .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
           shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
+          const diffuseLine = "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );";
+          const physicalChunk = THREE.ShaderChunk.lights_physical_pars_fragment;
+          if (!physicalChunk.includes(diffuseLine)) {
+            throw new Error("Skin scattering requires the supported Three.js physical diffuse shader.");
+          }
+          // DirectLight.color already includes shadow attenuation. Leave all specular lobes untouched.
+          shader.fragmentShader = shader.fragmentShader.replace("#include <lights_physical_pars_fragment>",
+            physicalChunk.replace(diffuseLine, `
+float skinDotNL = dot(geometryNormal, directLight.direction);
+float skinWrapped = max(skinDotNL + 0.3, 0.0) / (1.3 * 1.3);
+vec3 skinAttenuation = exp(-vec3(skinThicknessMm(vSkinRestPosition)) / vec3(3.5, 1.3, 0.65));
+float skinBack = pow(max(-skinDotNL, 0.0), 2.0);
+vec3 skinScattered = directLight.color * (
+  skinWrapped * vec3(0.95, 0.83, 0.75) + skinBack * skinAttenuation * 0.4
+);
+#ifdef USE_SHEEN
+skinScattered *= sheenEnergyComp;
+#endif
+vec3 skinExitFresnel = F_Schlick(
+  material.specularColor, material.specularF90, saturate(dot(geometryNormal, geometryViewDir))
+);
+vec3 skinDiffuseIrradiance = mix(
+  irradiance * (1.0 - F), skinScattered * (1.0 - skinExitFresnel), skinScattering
+);
+reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
+`));
         };
-        material.customProgramCacheKey = () => "skin-rest-triplanar-v1";
+        material.customProgramCacheKey = () => "skin-rest-triplanar-v3-pores-scattering";
       }
 
       // Fabric: plain weave threads with fuzz + bump
@@ -3716,7 +3824,9 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
     const initialMaterialPalette = {
       skin: "#c68b59", shirt: "#2e5a88", shorts: "#4a4e4d", hair: "#241c18",
       textures: {
-        skinDetail: 1, shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
+        skinDetail: 1, skinColorVariation: 1, skinRoughnessVariation: 1,
+        skinPoreDepth: 1, skinScattering: 0.35, skinThicknessScale: 1,
+        shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
         skinTileSize: 0.064, shirtRepeatX: 10, shirtRepeatY: 10,
         shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
       },
@@ -3886,6 +3996,19 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
             scheduleMaterialRefresh();
           });
         if (textureKey === "skin") {
+          for (const [key, label, min, max] of [
+            ["skinPoreDepth", "Pore depth", 0, 2],
+            ["skinColorVariation", "Anatomical color variation", 0, 2],
+            ["skinRoughnessVariation", "Regional roughness variation", 0, 2],
+            ["skinScattering", "Subsurface scattering (approx.)", 0, 1],
+            ["skinThicknessScale", "Scattering thickness multiplier", 0.25, 4],
+          ]) {
+            addParameterSlider(textureControls, key, label, min, max, 0.01,
+              materialPalette.textures[key], (value) => {
+                materialPalette.textures[key] = value;
+                scheduleMaterialRefresh();
+              });
+          }
           addParameterSlider(textureControls, "skinTileSize", "Skin tile size (mm)", 16, 256, 1,
             materialPalette.textures.skinTileSize * 1000, (value) => {
               materialPalette.textures.skinTileSize = value / 1000;
