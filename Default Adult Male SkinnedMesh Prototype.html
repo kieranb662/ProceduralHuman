@@ -102,6 +102,21 @@
           <button data-upper="holding" class="upper-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Holding Prop</button>
           <button data-upper="reaching" class="upper-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Reaching (IK)</button>
         </div>
+        <h3 class="mt-4 mb-2 text-xs font-semibold text-slate-300">Hand gestures (both hands)</h3>
+        <div id="handGestures" class="grid grid-cols-3 gap-2 text-xs">
+          <button data-hand="relaxed" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Relaxed</button>
+          <button data-hand="open" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Open</button>
+          <button data-hand="grip" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Grip</button>
+          <button data-hand="point" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Point</button>
+          <button data-hand="thumbsUp" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Thumbs Up</button>
+          <button data-hand="spread" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Spread</button>
+          <button data-hand="auto" class="hand-btn col-span-3 py-2 rounded-xl bg-sky-500 text-slate-950">Follow Animation</button>
+        </div>
+        <div class="mt-2 flex gap-2 text-xs">
+          <button id="viewLeftHand" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-200">Inspect Left Hand</button>
+          <button id="viewRightHand" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-200">Inspect Right Hand</button>
+        </div>
+        <p class="mt-2 text-[11px] text-slate-400">Gestures blend smoothly over locomotion. Waving and holding supply their own right-hand pose until a gesture is selected. API: character.setHandGesture("grip", "both"); side may also be "L" or "R". Use "auto" to restore overlay control. Orbit Hands View to inspect the palm, knuckles, webs and nails.</p>
       </section>
 
       <section>
@@ -569,12 +584,43 @@ vec4 sampleSkinTexture(sampler2D skinTexture, vec3 restPosition) {
        + texture2D(skinTexture, p.xz) * weights.y
        + texture2D(skinTexture, p.xy) * weights.z;
 }
+float handCreases(vec3 p) {
+  float side = sign(p.x);
+  vec3 d = p - vec3(side * 0.560, 1.025, 0.008);
+  vec3 along = normalize(vec3(side * 0.30, -0.94, 0.08));
+  vec3 across = normalize(vec3(0.0, 0.0, 1.0) - along * along.z);
+  vec3 palmar = normalize(cross(across, along)) * -side;
+  float u = dot(d, along), v = dot(d, across);
+  float region = smoothstep(0.006, 0.020, u) * (1.0 - smoothstep(0.080, 0.090, u))
+    * (1.0 - smoothstep(0.029, 0.037, abs(v))) * smoothstep(0.15, 0.65, dot(vSkinRestNormal, palmar));
+  // +v is radial (thumb side). Distal transverse ("heart") crease runs from the ulnar edge toward the
+  // index/middle web; proximal transverse ("head") crease starts at the radial edge; the thenar
+  // ("life") crease arcs around the thumb's ball toward the wrist.
+  float heart = exp(-pow((u - 0.0765 - v * 0.16) / 0.00070, 2.0)) * (1.0 - smoothstep(0.012, 0.020, v));
+  float head = exp(-pow((u - 0.0655 - v * 0.22) / 0.00065, 2.0)) * smoothstep(-0.030, -0.020, v);
+  vec2 thenar = vec2((u - 0.034) / 0.035, (v - 0.034) / 0.026);
+  float life = exp(-pow((length(thenar) - 1.0) * 0.026 / 0.00075, 2.0))
+    * (1.0 - smoothstep(0.024, 0.030, v)) * smoothstep(0.010, 0.020, u);
+  float palmLines = region * max(head, max(heart, life * 0.7));
+  float fingerLines = 0.0;
+  for (int i = 0; i < 4; i++) {
+${["spread", "base", "L"].map((k) => `    float ${k === "L" ? "len" : k} = ${handLayout(1).fingers.map((f) => f[k].toFixed(4))
+    .reduceRight((rest, v, i) => i === 3 ? v : `(i == ${i} ? ${v} : ${rest})`)};`).join("\n")}
+    float lateral = v - spread - (u - base) * spread * 1.2;
+    float digitMask = (1.0 - smoothstep(0.006, 0.009, abs(lateral))) * smoothstep(base, base + 0.008, u);
+    float pip = exp(-pow((u - base - len * 0.46) / 0.0006, 2.0));
+    float dip = exp(-pow((u - base - len * 0.76) / 0.0005, 2.0));
+    fingerLines = max(fingerLines, digitMask * max(pip, dip) * abs(dot(vSkinRestNormal, palmar)));
+  }
+  return max(palmLines, fingerLines * 0.75);
+}
 ` + shader.fragmentShader;
           shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", `
 ${THREE.ShaderChunk.map_fragment.replace(
   "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )")}
 vec3 skinMasks = skinRegionMasks(vSkinRestPosition);
 diffuseColor.rgb *= mix(vec3(1.0), vec3(1.035, 0.955, 0.935), skinMasks.x * skinColorVariation);
+diffuseColor.rgb *= 1.0 - handCreases(vSkinRestPosition) * 0.13 * skinColorVariation;
 float nostrilV = vFaceSurface.y - 1.6205;
 // Teardrop openings: axes converge toward the tip and narrow at the front, as in nostrilField().
 vec2 nostrilCoord = vec2(
@@ -599,6 +645,9 @@ roughnessFactor = clamp(
             .replace("texture2D( bumpMap, vBumpMapUv + dSTdy )", "sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy )");
           // Retain surface derivative lengths so bumpScale represents height in scene units.
           bumpChunk = bumpChunk
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition ).x - handCreases(vSkinRestPosition) * 0.18)")
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x - handCreases(vSkinRestPosition + dSTdx) * 0.18)")
+            .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x - handCreases(vSkinRestPosition + dSTdy) * 0.18)")
             .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
             .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
           shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
@@ -629,7 +678,7 @@ vec3 skinDiffuseIrradiance = mix(
 reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
 `));
         };
-        material.customProgramCacheKey = () => "skin-rest-triplanar-v5-teardrop-nostrils";
+        material.customProgramCacheKey = () => "skin-rest-triplanar-v6-hand-creases";
       }
 
       // Fabric: plain weave threads with fuzz + bump
@@ -821,11 +870,11 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const oralTex = makeOralTextures(false);
 
       // 0: Body Skin, 1: T-Shirt, 2: Shorts, 3: Hair/Brows,
-      // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Gums, 10: Tongue
+      // 4: Eyeball, 5: Head Skin, 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Gums, 10: Tongue, 11: Nails
       const materials = [
         new THREE.MeshPhysicalMaterial({
           map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004,
-          roughness: 0.60, metalness: 0.0,
+          roughness: 0.60, metalness: 0.0, vertexColors: true,
           sheen: 0.22, sheenColor: new THREE.Color(0xffdfd0), sheenRoughness: 0.85,
           clearcoat: 0.06, clearcoatRoughness: 0.55,
         }),
@@ -870,6 +919,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           color: 0xffffff, vertexColors: true, roughness: 0.43, metalness: 0.0,
           clearcoat: 0.45, clearcoatRoughness: 0.25, side: THREE.DoubleSide,
         }),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xdca192, vertexColors: true, roughness: 0.32, metalness: 0,
+          clearcoat: 0.35, clearcoatRoughness: 0.28, ior: 1.45,
+        }),
       ];
       materials.forEach((material, index) => {
         if (palette.materials?.[index]) material.setValues(palette.materials[index]);
@@ -899,27 +952,78 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     function handLayout(s) {
       const pHand = new THREE.Vector3(s * 0.560, 1.025, 0.008);
       const palmDir = new THREE.Vector3(s * 0.30, -0.94, 0.08).normalize();
+      const across = new THREE.Vector3(0, 0, 1).addScaledVector(palmDir, -palmDir.z).normalize();
+      const palmNormal = new THREE.Vector3().crossVectors(across, palmDir).multiplyScalar(-s).normalize();
       const palmBase = pHand.clone().addScaledVector(palmDir, 0.072);
+      // Adult male proportions: wrist crease to middle fingertip ~0.188 m (~10.6% of stature),
+      // ring finger slightly longer than index, little finger ~0.75 of the middle finger.
       const specs = [
-        { name: "Index", spread: 0.027, L: 0.080, rad: 0.0088 },
-        { name: "Middle", spread: 0.009, L: 0.088, rad: 0.0090 },
-        { name: "Ring", spread: -0.009, L: 0.082, rad: 0.0085 },
-        { name: "Pinky", spread: -0.026, L: 0.066, rad: 0.0072 },
+        { name: "Index", spread: 0.030, base: 0.088, L: 0.088, rad: 0.0090 },
+        { name: "Middle", spread: 0.010, base: 0.092, L: 0.096, rad: 0.0094 },
+        { name: "Ring", spread: -0.010, base: 0.089, L: 0.091, rad: 0.0088 },
+        { name: "Pinky", spread: -0.030, base: 0.080, L: 0.072, rad: 0.0076 },
       ];
       const fingers = specs.map((f) => {
-        const dir = palmDir.clone().add(new THREE.Vector3(0, 0, f.spread * 1.5)).normalize();
-        const P = palmBase.clone().add(new THREE.Vector3(0, 0, f.spread)).addScaledVector(palmDir, 0.004);
+        const dir = palmDir.clone().addScaledVector(across, f.spread * 1.2).normalize();
+        const P = pHand.clone().addScaledVector(palmDir, f.base).addScaledVector(across, f.spread);
         return {
           ...f, dir, P,
           J1: P.clone().addScaledVector(dir, f.L * 0.46),
           J2: P.clone().addScaledVector(dir, f.L * 0.76),
         };
       });
-      const tStart = pHand.clone().add(new THREE.Vector3(s * 0.006, -0.026, 0.032));
-      const tMid = tStart.clone().add(new THREE.Vector3(s * 0.005, -0.028, 0.024));
-      const tTip = tMid.clone().add(new THREE.Vector3(s * 0.002, -0.024, 0.016));
-      const tJ3 = tMid.clone().lerp(tTip, 0.55);
-      return { pHand, palmDir, palmBase, fingers, thumb: { tStart, tMid, tTip, tJ3 } };
+      // Thumb: CMC near the radial wrist; metacarpal ~51 mm, proximal ~34 mm, distal ~29 mm.
+      const tStart = pHand.clone().addScaledVector(palmDir, 0.027).addScaledVector(across, 0.026);
+      const tMid = tStart.clone().addScaledVector(palmDir, 0.036).addScaledVector(across, 0.036);
+      const tJ3 = tMid.clone().addScaledVector(palmDir, 0.029).addScaledVector(across, 0.017);
+      const tTip = tJ3.clone().addScaledVector(palmDir, 0.027).addScaledVector(across, 0.010);
+      // The thumb is pronated relative to the fingers: its nail faces dorsal-radially and its pad faces
+      // the fingers, so MCP/IP flexion curls it toward the palm's ulnar side, not straight palmar.
+      // hingeNormals[i] is the pad direction of segment i (metacarpal, proximal, distal phalanx).
+      const thumbPronation = 0.9;
+      const hingeNormals = [[tStart, tMid], [tMid, tJ3], [tJ3, tTip]].map(([a, b], i) => {
+        const dir = b.clone().sub(a).normalize();
+        const radial = across.clone().addScaledVector(dir, -across.dot(dir)).normalize();
+        const roll = i ? thumbPronation : 0;
+        return palmNormal.clone().multiplyScalar(Math.cos(roll)).addScaledVector(radial, -Math.sin(roll)).normalize();
+      });
+      return { pHand, palmDir, palmNormal, across, palmBase, fingers, thumb: { tStart, tMid, tTip, tJ3, pronation: thumbPronation, hingeNormals } };
+    }
+
+    const HAND_GESTURES = {
+      relaxed: { curl: [0.16, 0.24, 0.12], thumb: [0.10, 0.14, 0.08], opposition: 0.18, abduction: 0, spread: 0 },
+      open: { curl: [0.02, 0.03, 0.02], thumb: [0, 0.04, 0.02], opposition: 0.10, abduction: 0.12, spread: 0.04 },
+      // Fist curls give ~240° total flexion per finger with tips seated in the palm.
+      grip: { curl: [1.45, 1.62, 0.95], thumb: [0.35, 0.52, 0.84], opposition: 0.65, abduction: 0.27, spread: 0 },
+      point: { curl: [1.45, 1.62, 0.95], indexCurl: [0.015, 0.035, 0.02], thumb: [0.45, 0.53, 0.59], opposition: 0.64, abduction: 0.16, spread: 0 },
+      thumbsUp: { curl: [1.45, 1.62, 0.95], thumb: [0, 0.05, -0.06], opposition: 0.20, abduction: 0.50, spread: 0 },
+      spread: { curl: [0.03, 0.04, 0.02], thumb: [0, 0.02, 0], opposition: 0.15, abduction: 0.60, spread: 1 },
+    };
+
+    function handPoseQuaternions(side, pose) {
+      const s = side === "L" ? 1 : -1, hl = handLayout(s), out = new Map();
+      const axisQ = (axis, angle) => new THREE.Quaternion().setFromAxisAngle(axis, angle);
+      hl.fingers.forEach((f, fi) => {
+        const axis = new THREE.Vector3().crossVectors(f.dir, hl.palmNormal).normalize();
+        const individual = Array.isArray(pose.curl[0]);
+        const curls = fi === 0 && pose.indexCurl ? pose.indexCurl
+          : individual ? pose.curl[fi] : pose.curl;
+        const fan = [0.20, 0.035, -0.12, -0.29][fi] * pose.spread;
+        for (let j = 1; j <= 3; j++) {
+          const q = axisQ(axis, curls[j - 1] * (individual ? 1 : 1 + fi * 0.025));
+          if (j === 1) q.premultiply(axisQ(hl.palmNormal, s * fan));
+          out.set(`${f.name}${j}_${side}`, q);
+        }
+      });
+      const { tStart, tMid, tJ3, tTip } = hl.thumb;
+      const axes = [[tStart, tMid], [tMid, tJ3], [tJ3, tTip]]
+        .map(([a, b], i) => new THREE.Vector3().crossVectors(b.clone().sub(a).normalize(), hl.thumb.hingeNormals[i]).normalize());
+      const thumb = axisQ(hl.palmDir, s * pose.opposition)
+        .multiply(axisQ(hl.palmNormal, s * pose.abduction)).multiply(axisQ(axes[0], pose.thumb[0]));
+      out.set(`Thumb_${side}`, thumb);
+      out.set(`Thumb2_${side}`, axisQ(axes[1], pose.thumb[1]));
+      out.set(`Thumb3_${side}`, axisQ(axes[2], pose.thumb[2]));
+      return out;
     }
 
     // --- 1. Skeleton Builder (body + 3-joint fingers & thumb) ---
@@ -991,10 +1095,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         addBone(`Forearm_${side}`, `UpperArm_${side}`, s * 0.425, 1.225, -0.014);
         addBone(`Hand_${side}`, `Forearm_${side}`, s * 0.560, 1.025, 0.008);
         addBone(`Fingers_${side}`, `Hand_${side}`, s * 0.585, 0.960, 0.014);
-        addBone(`Thumb_${side}`, `Hand_${side}`, s * 0.556, 0.992, 0.036);
 
         // Jointed fingers (3 phalanges each) + 2 extra thumb joints
         const hl = handLayout(s);
+        addBone(`Thumb_${side}`, `Hand_${side}`, hl.thumb.tStart.x, hl.thumb.tStart.y, hl.thumb.tStart.z);
         for (const f of hl.fingers) {
           addBone(`${f.name}1_${side}`, `Hand_${side}`, f.P.x, f.P.y, f.P.z);
           addBone(`${f.name}2_${side}`, `${f.name}1_${side}`, f.J1.x, f.J1.y, f.J1.z);
@@ -1017,12 +1121,14 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
       const handSocketL = new THREE.Object3D();
       handSocketL.name = "HandSocket_L";
-      handSocketL.position.set(0.02, -0.06, 0.025);
+      handSocketL.position.copy(handLayout(1).palmDir).multiplyScalar(0.0731)
+        .addScaledVector(handLayout(1).palmNormal, 0.0207).addScaledVector(handLayout(1).across, -0.0072);
       boneMap.get("Hand_L").add(handSocketL);
 
       const handSocketR = new THREE.Object3D();
       handSocketR.name = "HandSocket_R";
-      handSocketR.position.set(-0.02, -0.06, 0.025);
+      handSocketR.position.copy(handLayout(-1).palmDir).multiplyScalar(0.0731)
+        .addScaledVector(handLayout(-1).palmNormal, 0.0207).addScaledVector(handLayout(-1).across, -0.0072);
       boneMap.get("Hand_R").add(handSocketR);
 
       return {
@@ -1255,6 +1361,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
       const faceSlots = [], faceBands = [];
       const interfaces = {};
+      const handParts = [];
       const addVertex = (p, w) => {
         const i = positions.length / 3;
         positions.push(p.x, p.y, p.z);
@@ -1418,9 +1525,11 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           bridge(previous, ring, slot, r);
           previous = ring;
         }
-        const last = defs[defs.length - 1];
-        const cap = addVertex(last.pos, last.weight);
-        for (let j = 0; j < previous.length; j++) triangle(previous[j], previous[(j + 1) % previous.length], cap, slot, defs.length);
+        if (!slot.startsWith("arms_")) {
+          const last = defs[defs.length - 1];
+          const cap = addVertex(last.pos, last.weight);
+          for (let j = 0; j < previous.length; j++) triangle(previous[j], previous[(j + 1) % previous.length], cap, slot, defs.length);
+        }
         return previous;
       };
       for (const [side, s, column] of [["L", 1, coarseToFine[20]], ["R", -1, 0]]) {
@@ -1448,11 +1557,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           [at(elbow, hand, 0.68), 0.032, 0.033, w("Forearm", "ForearmTwist", 1)],
           [at(elbow, hand, 0.90), 0.024, 0.030, w("ForearmTwist", "Hand", 0.3)],
           [hand.clone(), 0.020, 0.035, w("ForearmTwist", "Hand", 0.75)],
-          [hand.clone().add(new THREE.Vector3(s * 0.015, -0.042, 0.004)), 0.016, 0.040, w("Forearm", "Hand", 1)],
-          [hand.clone().add(new THREE.Vector3(s * 0.025, -0.076, 0.006)), 0.010, 0.035, w("Forearm", "Hand", 1)],
-          [hand.clone().add(new THREE.Vector3(s * 0.028, -0.085, 0.007)), 0.003, 0.022, w("Forearm", "Hand", 1)],
         ].map(([pos, rx, rz, weight]) => ({ pos, rx, rz, weight }));
-        extendTube(opening, defs, `arms_${side}`);
+        const wrist = extendTube(opening, defs, `arms_${side}`);
+        interfaces[`wrist_${side}`] = wrist;
+        handParts.push(...buildJointedHand(rig, side, s, { addVertex, point, triangle, wrist }));
       }
       const bottom = torso[0];
       const crotch = [bottom[10]];
@@ -1510,7 +1618,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       }
       const smoothVertices = used.map((_, i) => i).filter((i) => {
         const y = pAttr.getY(i), x = Math.abs(pAttr.getX(i));
-        return (y > 0.80 && y < 1.015) || (y > 1.28 && y < 1.47 && x > 0.13);
+        return (y > 0.80 && y < 1.015 && x < 0.24) || (y > 1.28 && y < 1.47 && x > 0.13);
       });
       // Local Taubin relaxation rounds the junctions without opening seams or shrinking the body.
       for (const factor of [0.45, -0.46, 0.45, -0.46, 0.45, -0.46]) {
@@ -1527,9 +1635,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       geo.userData.faceBands = faceBands;
       geo.userData.interfaces = Object.fromEntries(Object.entries(interfaces).map(([name, loop]) =>
         [name, loop.map((i) => remap.get(i))]));
-      const parts = [{ geo, mat: 0, tag: "body" }];
+      const parts = [{ geo, mat: 0, tag: "body" }, ...handParts];
       for (const [side, s] of [["L", 1], ["R", -1]]) {
-        parts.push(...buildJointedHand(rig, side, s));
         const x = rig.worldRest.get(`Foot_${side}`).x;
         const toes = [
           { offset: -0.035, radius: 0.0135, length: 0.061 },
@@ -1587,48 +1694,301 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       return loftRings(rings, capStart, capEnd);
     }
 
-    // --- 2C-2. Anatomical hand: 3-phalanx tapered fingers with knuckle/joint bulges, and a 3-joint thumb ---
-    function buildJointedHand(rig, side, s) {
+    // Palm sheets branch into open digit loops; all skin junctions share body indices.
+    function buildJointedHand(rig, side, s, surface) {
       const { boneIndex } = rig;
       const hl = handLayout(s);
       const bi = (n) => boneIndex.get(n);
       const iHand = bi(`Hand_${side}`);
       const pk = (arr) => normalizeAndPackWeights(arr);
       const parts = [];
-
-      for (const f of hl.fingers) {
-        const b1 = bi(`${f.name}1_${side}`), b2 = bi(`${f.name}2_${side}`), b3 = bi(`${f.name}3_${side}`);
-        const at = (t) => f.P.clone().addScaledVector(f.dir, f.L * t);
-        const defs = [
-          { pos: f.P.clone().addScaledVector(f.dir, -0.014), k: 1.18, w: [[iHand, 0.75], [b1, 0.25]] },
-          { pos: f.P.clone(), k: 1.14, w: [[iHand, 0.35], [b1, 0.65]] },
-          { pos: at(0.20), k: 1.00, w: [[b1, 1]] },
-          { pos: at(0.38), k: 0.96, w: [[b1, 0.8], [b2, 0.2]] },
-          { pos: at(0.46), k: 1.03, w: [[b1, 0.5], [b2, 0.5]] },
-          { pos: at(0.54), k: 0.96, w: [[b1, 0.2], [b2, 0.8]] },
-          { pos: at(0.68), k: 0.92, w: [[b2, 1]] },
-          { pos: at(0.76), k: 0.97, w: [[b2, 0.5], [b3, 0.5]] },
-          { pos: at(0.84), k: 0.88, w: [[b2, 0.15], [b3, 0.85]] },
-          { pos: at(0.94), k: 0.78, w: [[b3, 1]] },
-          { pos: at(1.00), k: 0.58, w: [[b3, 1]] },
-        ].map((d) => ({ pos: d.pos, rx: f.rad * d.k * 0.82, rz: f.rad * d.k, weight: pk(d.w) }));
-        parts.push({ geo: buildChainTube(defs, 12, true, true), mat: 0 });
+      const { addVertex, point, triangle, wrist } = surface;
+      const { pHand, palmDir, palmNormal, across } = hl;
+      const faces = [];
+      const emit = (a, b, c, outward) => {
+        const normal = point(b).sub(point(a)).cross(point(c).sub(point(a)));
+        if (normal.dot(outward) < 0) [b, c] = [c, b];
+        faces.push([a, b, c]);
+      };
+      const centerOf = (loop) => loop.reduce((p, i) => p.add(point(i)), new THREE.Vector3()).divideScalar(loop.length);
+      const stitch = (a, b) => {
+        const center = centerOf(a).add(centerOf(b)).multiplyScalar(0.5);
+        let i = 0, j = 0;
+        while (i < a.length || j < b.length) {
+          const ai = a[i % a.length], bj = b[j % b.length];
+          if (j === b.length || (i < a.length && (i + 1) / a.length <= (j + 1) / b.length)) {
+            const next = a[++i % a.length];
+            emit(ai, next, bj, point(ai).add(point(next)).add(point(bj)).divideScalar(3).sub(center));
+          } else {
+            const next = b[++j % b.length];
+            emit(ai, next, bj, point(ai).add(point(next)).add(point(bj)).divideScalar(3).sub(center));
+          }
+        }
+      };
+      const alignLoop = (loop, reference, tangent) => {
+        const center = centerOf(loop);
+        const orientation = (ring) => point(ring[1]).sub(point(ring[0]))
+          .cross(point(ring[0]).sub(center)).dot(tangent);
+        if (orientation(loop) * orientation(reference) < 0) loop.reverse();
+        const first = reference[0], target = point(first);
+        let nearest = 0;
+        loop.forEach((v, i) => { if (point(v).distanceToSquared(target) < point(loop[nearest]).distanceToSquared(target)) nearest = i; });
+        return [...loop.slice(nearest), ...loop.slice(0, nearest)];
+      };
+      const digitPairs = (names, t) => {
+        const anchors = [0, 0.46, 0.76];
+        return names.map((name, j) => {
+          const left = j ? THREE.MathUtils.smoothstep(t, anchors[j] - 0.12, anchors[j] + 0.12) : 1;
+          const right = j < 2 ? 1 - THREE.MathUtils.smoothstep(t, anchors[j + 1] - 0.12, anchors[j + 1] + 0.12) : 1;
+          return [bi(name), left * right];
+        });
+      };
+      const digitWeight = (names, t) => pk(digitPairs(names, t));
+      const iThumb = bi(`Thumb_${side}`);
+      const sheets = [[], []], thenarWeight = new Map();
+      const cols = 22, rows = 10;
+      for (let face = 0; face < 2; face++) {
+        for (let r = 0; r <= rows; r++) {
+          const t = r / rows;
+          sheets[face][r] = [];
+          for (let c = 0; c <= cols; c++) {
+            const q = c / cols * 2 - 1;
+            const width = THREE.MathUtils.lerp(0.032, 0.036667, Math.sin(t * Math.PI / 2));
+            const fi = Math.min(3, Math.floor(c / 6));
+            const f = hl.fingers[3 - fi];
+            const end = f.base - 0.010;
+            const depth = 0.017 * (1 - 0.35 * t) * Math.sqrt(1 - 0.65 * q * q);
+            const thenar = Math.exp(-(((q - 0.55) / 0.40) ** 2) - ((t - 0.42) / 0.30) ** 2) * 0.005;
+            const p = pHand.clone().addScaledVector(palmDir, 0.010 + (end - 0.010) * t)
+              .addScaledVector(across, width * q)
+              .addScaledVector(palmNormal, (face ? -1 : 1) * depth + (face ? 0 : thenar));
+            const fingerInfluence = 0.18 * THREE.MathUtils.smoothstep(t, 0.78, 1);
+            // Thenar/first-web skin follows the thumb metacarpal part-way so the CMC saddle stays smooth.
+            const thenarInfluence = (face ? 0.22 : 0.34) * THREE.MathUtils.smoothstep(q, 0.30, 1)
+              * Math.exp(-(((t - 0.45) / 0.30) ** 2));
+            sheets[face][r].push(addVertex(p, pk([[iHand, 1 - fingerInfluence - thenarInfluence],
+              [bi(`${f.name}1_${side}`), fingerInfluence], [iThumb, thenarInfluence]])));
+            thenarWeight.set(sheets[face][r].at(-1), thenarInfluence);
+          }
+        }
       }
-
-      const { tStart, tMid, tTip } = hl.thumb;
-      const t1 = bi(`Thumb_${side}`), t2 = bi(`Thumb2_${side}`), t3 = bi(`Thumb3_${side}`);
-      const lp = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
-      const tdefs = [
-        { pos: tStart.clone().addScaledVector(tMid.clone().sub(tStart), -0.9), r: 0.0140, w: [[iHand, 0.9], [t1, 0.1]] },
-        { pos: tStart.clone(), r: 0.0128, w: [[iHand, 0.5], [t1, 0.5]] },
-        { pos: lp(tStart, tMid, 0.6), r: 0.0114, w: [[t1, 1]] },
-        { pos: tMid.clone(), r: 0.0112, w: [[t1, 0.5], [t2, 0.5]] },
-        { pos: lp(tMid, tTip, 0.4), r: 0.0100, w: [[t2, 0.7], [t3, 0.3]] },
-        { pos: lp(tMid, tTip, 0.75), r: 0.0090, w: [[t3, 1]] },
-        { pos: tTip.clone(), r: 0.0068, w: [[t3, 1]] },
-      ].map((d) => ({ pos: d.pos, rx: d.r * 0.9, rz: d.r, weight: pk(d.w) }));
-      parts.push({ geo: buildChainTube(tdefs, 12, true, true), mat: 0 });
-
+      for (let face = 0; face < 2; face++) {
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+          const a = sheets[face][r], b = sheets[face][r + 1];
+          const n = palmNormal.clone().multiplyScalar(face ? -1 : 1);
+          emit(a[c], a[c + 1], b[c], n);
+          emit(a[c + 1], b[c + 1], b[c], n);
+        }
+      }
+      for (const c of [0, cols]) for (let r = 0; r < rows; r++) {
+        // Leave the radial border open for the thumb's carpometacarpal saddle.
+        if (c === cols && r >= 1 && r < 8) continue;
+        const a = sheets[0][r][c], b = sheets[0][r + 1][c];
+        const d = sheets[1][r][c], e = sheets[1][r + 1][c];
+        const n = across.clone().multiplyScalar(c ? 1 : -1);
+        if (r < rows - 1) {
+          emit(a, b, d, n);
+          emit(b, e, d, n);
+        }
+      }
+      const proximal = [...sheets[0][0], ...sheets[1][0].slice().reverse()];
+      stitch(wrist, alignLoop(proximal, wrist, palmDir));
+      const top = sheets[0][rows], bottom = sheets[1][rows];
+      const mids = new Map();
+      for (const c of [0, 4, 6, 10, 12, 16, 18, 22]) {
+        // Outer palm edges are rounded, not boxed: bulge the side midpoints so the index/pinky tubes meet them smoothly.
+        const bulge = c === 0 || c === cols ? across.clone().multiplyScalar(c ? 0.0026 : -0.0026) : new THREE.Vector3();
+        mids.set(c, addVertex(point(top[c]).add(point(bottom[c])).multiplyScalar(0.5).add(bulge), pk([[iHand, 0.8],
+          [bi(`${hl.fingers[3 - Math.min(3, Math.floor(c / 6))].name}1_${side}`), 0.2]])));
+      }
+      for (const c of [0, cols]) {
+        const a = sheets[0][rows - 1][c], d = sheets[1][rows - 1][c];
+        const n = across.clone().multiplyScalar(c ? 1 : -1);
+        emit(a, top[c], mids.get(c), n);
+        emit(a, mids.get(c), d, n);
+        emit(d, mids.get(c), bottom[c], n);
+      }
+      for (const c of [4, 5, 10, 11, 16, 17]) {
+        const a = top[c], b = top[c + 1], d = bottom[c], e = bottom[c + 1];
+        if (mids.has(c)) {
+          emit(a, b, mids.get(c), palmDir);
+          emit(mids.get(c), b, d, palmDir);
+          emit(d, b, e, palmDir);
+        } else {
+          emit(a, b, d, palmDir);
+          emit(d, b, mids.get(c + 1), palmDir);
+          emit(d, mids.get(c + 1), e, palmDir);
+        }
+      }
+      // Nail plates follow the dorsal skin profile (skinRadius(v)) and sit ~0.4 mm proud of it,
+      // with a pale lunula at the base and a whiter free edge.
+      const addNail = (start, dir, skinRadius, length, bone, weightAt, padNormal = palmNormal) => {
+        const lateral = new THREE.Vector3().crossVectors(dir, padNormal).normalize();
+        const dorsal = new THREE.Vector3().crossVectors(dir, lateral).normalize();
+        const p = [], uv = [], col = [], si = [], sw = [], ix = [];
+        for (let r = 0; r <= 8; r++) for (let c = 0; c <= 10; c++) {
+          const u = c / 10 * 2 - 1, v = r / 8;
+          const radius = skinRadius(v);
+          const x = radius * 0.70 * u * (0.86 + 0.14 * Math.sin(Math.min(1, v * 1.4) * Math.PI / 2));
+          const height = radius * 0.86 * Math.sqrt(Math.max(0, 1 - (x / radius) ** 2));
+          const pos = start.clone().addScaledVector(dir, length * v)
+            .addScaledVector(lateral, x)
+            .addScaledVector(dorsal, height + 0.0004 * (1 - 0.6 * u * u));
+          p.push(pos.x, pos.y, pos.z);
+          uv.push(c / 10, v);
+          const shade = v > 0.86 ? 1.12 : (v < 0.18 ? 1.04 : 0.93);
+          col.push(shade, shade, shade);
+          const weight = weightAt(v);
+          si.push(...weight.indices); sw.push(...weight.weights);
+        }
+        for (let r = 0; r < 8; r++) for (let c = 0; c < 10; c++) {
+          const a = r * 11 + c, b = a + 1, d = a + 11, e = d + 1;
+          const va = new THREE.Vector3().fromArray(p, a * 3);
+          const n = new THREE.Vector3().fromArray(p, b * 3).sub(va)
+            .cross(new THREE.Vector3().fromArray(p, d * 3).sub(va));
+          ix.push(...(n.dot(dorsal) > 0 ? [a, b, d, b, e, d] : [a, d, b, b, d, e]));
+        }
+        parts.push({ geo: buildGeometryFromArrays(p, uv, col, si, sw, ix), mat: 11, tag: `nail_${side}_${bone}` });
+      };
+      const growDigit = (opening, centers, radii, weights, dir) => {
+        let previous = opening;
+        const lateral = new THREE.Vector3().crossVectors(dir, palmNormal).normalize();
+        const dorsal = new THREE.Vector3().crossVectors(lateral, dir).normalize();
+        const segs = 20;
+        for (let r = 0; r < centers.length; r++) {
+          let ring = Array.from({ length: segs }, (_, j) => {
+            const angle = j / segs * Math.PI * 2;
+            const p = centers[r].clone().addScaledVector(lateral, Math.cos(angle) * radii[r])
+              .addScaledVector(dorsal, Math.sin(angle) * radii[r] * 0.86);
+            return addVertex(p, weights[r]);
+          });
+          ring = alignLoop(ring, previous, dir);
+          stitch(previous, ring);
+          previous = ring;
+        }
+        const tip = addVertex(centers.at(-1).clone().addScaledVector(dir, 0.0012), weights.at(-1));
+        for (let j = 0; j < previous.length; j++) emit(previous[j], previous[(j + 1) % previous.length], tip, dir);
+      };
+      for (let fi = 0; fi < 4; fi++) {
+        const f = hl.fingers[3 - fi], c = fi * 6;
+        const opening = [...top.slice(c, c + 5), mids.get(c + 4),
+          ...bottom.slice(c, c + 5).reverse(), mids.get(c)];
+        const ts = [0, 0.07, 0.16, 0.27, 0.37, 0.43, 0.46, 0.49, 0.55, 0.65, 0.73, 0.76, 0.79, 0.85, 0.91, 0.96, 0.985, 1];
+        const names = [1, 2, 3].map((j) => `${f.name}${j}_${side}`);
+        const centers = ts.map((t) => f.P.clone().addScaledVector(f.dir, f.L * t));
+        const fingerRadius = (t) => {
+          const knuckles = 0.10 * Math.exp(-(((t - 0.46) / 0.055) ** 2))
+            + 0.06 * Math.exp(-(((t - 0.76) / 0.045) ** 2));
+          return f.rad * (1 - 0.25 * t + knuckles) * (t > 0.91 ? Math.sqrt(Math.max(0.015, 1 - ((t - 0.91) / 0.092) ** 2)) : 1);
+        };
+        const radii = ts.map(fingerRadius);
+        growDigit(opening, centers, radii, ts.map((t) => t < 0.1
+          ? pk([[iHand, 0.40 * (1 - t / 0.1)], [bi(names[0]), 0.60 + 0.40 * t / 0.1]])
+          : digitWeight(names, t)), f.dir);
+        addNail(f.P.clone().addScaledVector(f.dir, f.L * 0.80), f.dir, (v) => fingerRadius(0.80 + v * 0.16), f.L * 0.16, bi(names[2]),
+          (v) => digitWeight(names, 0.80 + v * 0.16));
+      }
+      const thumbOpening = [...sheets[0].slice(1, 9).map((r) => r[cols]),
+        ...sheets[1].slice(1, 9).reverse().map((r) => r[cols])];
+      const { tStart, tMid, tJ3, tTip } = hl.thumb;
+      const thumbNames = [`Thumb_${side}`, `Thumb2_${side}`, `Thumb3_${side}`];
+      // Thumb skeleton polyline (t: 0 CMC, 0.46 MCP, 0.76 IP, 1 tip). Rings sit perpendicular to the
+      // local bone, blending direction across each joint, so knuckles don't shear when they flex.
+      const thumbSegDirs = [[tStart, tMid], [tMid, tJ3], [tJ3, tTip]].map(([a, b]) => b.clone().sub(a).normalize());
+      const thumbCenter = (t) => t <= 0.46 ? tStart.clone().lerp(tMid, t / 0.46)
+        : t <= 0.76 ? tMid.clone().lerp(tJ3, (t - 0.46) / 0.30) : tJ3.clone().lerp(tTip, (t - 0.76) / 0.24);
+      // Pronation ramps in along the metacarpal so the web joins the palm untwisted, reaching the
+      // rig's hinge frame (hl.thumb.hingeNormals) by the MCP.
+      const thumbFrame = (t) => {
+        const dir = thumbSegDirs[0].clone().lerp(thumbSegDirs[1], THREE.MathUtils.smoothstep(t, 0.40, 0.52))
+          .lerp(thumbSegDirs[2], THREE.MathUtils.smoothstep(t, 0.70, 0.82)).normalize();
+        const radial = across.clone().addScaledVector(dir, -across.dot(dir)).normalize();
+        const roll = hl.thumb.pronation * THREE.MathUtils.smoothstep(t, 0.30, 0.46);
+        const pad = palmNormal.clone().multiplyScalar(Math.cos(roll)).addScaledVector(radial, -Math.sin(roll)).normalize();
+        const lateral = new THREE.Vector3().crossVectors(dir, pad).normalize();
+        return { dir, lateral, palmar: new THREE.Vector3().crossVectors(lateral, dir).normalize() };
+      };
+      // Half-widths: broad MCP and IP knuckles, a slimmer proximal phalanx, a wide distal pad, rounded tip.
+      const thumbRadius = (t) => 0.0118 * (1 - 0.22 * t
+        - 0.05 * Math.exp(-(((t - 0.62) / 0.07) ** 2)) + 0.05 * Math.exp(-(((t - 0.46) / 0.05) ** 2))
+        + 0.04 * Math.exp(-(((t - 0.76) / 0.04) ** 2)) + 0.04 * Math.exp(-(((t - 0.87) / 0.05) ** 2)))
+        * (t > 0.9 ? Math.sqrt(Math.max(0.015, 1 - ((t - 0.9) / 0.103) ** 2)) : 1);
+      const THUMB_FLAT = 0.82;
+      const thumbRingPoint = (t, angle, scale = 1) => {
+        const { lateral, palmar } = thumbFrame(t), r = thumbRadius(t) * scale;
+        // Fleshy palmar pulp under the distal phalanx.
+        const pad = Math.sin(angle) > 0 ? 1 + 0.10 * Math.sin(angle) * THREE.MathUtils.smoothstep(t, 0.78, 0.86) : 1;
+        return thumbCenter(t).addScaledVector(lateral, Math.cos(angle) * r).addScaledVector(palmar, Math.sin(angle) * r * THUMB_FLAT * pad);
+      };
+      const thumbTubeWeight = (t, hand) => pk([[iHand, hand], ...digitPairs(thumbNames, t).map(([b, w]) => [b, w * (1 - hand)])]);
+      // Thenar / first-web bridge: loft the long radial palm opening into the thumb's first ring over
+      // several rows, ramping skin from Hand to Thumb so abduction fans the web instead of pinching it.
+      const T0 = 0.40, LOFT = 6;
+      const f0 = thumbFrame(T0), c0 = thumbCenter(T0), cOpen = centerOf(thumbOpening);
+      const lengths = thumbOpening.map((v, j) => point(v).distanceTo(point(thumbOpening[(j + 1) % thumbOpening.length])));
+      const perimeter = lengths.reduce((a, b) => a + b, 0);
+      const proximalSign = Math.sign(point(thumbOpening[0]).sub(point(thumbOpening[7])).dot(f0.lateral)) || 1;
+      let walked = -lengths.at(-1) / 2;
+      const loftAngles = thumbOpening.map((_, j) => {
+        const u = (j ? (walked += lengths[j - 1]) : (walked += lengths.at(-1) / 2, 0)) / perimeter;
+        return proximalSign > 0 ? u * Math.PI * 2 : Math.PI - u * Math.PI * 2;
+      });
+      let previous = thumbOpening;
+      for (let k = 1; k <= LOFT; k++) {
+        const e = k / LOFT;
+        const center = cOpen.clone().lerp(c0, e);
+        const row = thumbOpening.map((v, j) => {
+          const target = thumbRingPoint(T0, loftAngles[j]);
+          const p = point(v).lerp(target, e);
+          // Slight convexity so the bridge reads as muscle (thenar) and web, not a flat fin.
+          p.add(p.clone().sub(center).multiplyScalar(0.07 * Math.sin(Math.PI * e)));
+          const thumbW = THREE.MathUtils.lerp(thenarWeight.get(v), 0.86, e);
+          return addVertex(p, pk([[iHand, 1 - thumbW], [iThumb, thumbW]]));
+        });
+        stitch(previous, row);
+        previous = row;
+      }
+      const thumbTs = [0.43, 0.46, 0.49, 0.53, 0.60, 0.67, 0.72, 0.76, 0.80, 0.85, 0.90, 0.94, 0.97, 0.99, 1];
+      const THUMB_SEGS = 20;
+      for (const t of thumbTs) {
+        const hand = 0.14 * Math.max(0, 1 - (t - T0) / 0.12);
+        let ring = Array.from({ length: THUMB_SEGS }, (_, j) => addVertex(thumbRingPoint(t, j / THUMB_SEGS * Math.PI * 2), thumbTubeWeight(t, hand)));
+        ring = alignLoop(ring, previous, thumbFrame(t).dir);
+        stitch(previous, ring);
+        previous = ring;
+      }
+      const thumbTip = addVertex(thumbCenter(1).addScaledVector(thumbFrame(1).dir, 0.0012), thumbTubeWeight(1, 0));
+      for (let j = 0; j < previous.length; j++) emit(previous[j], previous[(j + 1) % previous.length], thumbTip, thumbFrame(1).dir);
+      const thumbNailStart = 0.76 + 0.24 * 0.18, thumbNailSpan = 0.24 * 0.56;
+      addNail(tJ3.clone().lerp(tTip, 0.18), tTip.clone().sub(tJ3).normalize(), (v) => thumbRadius(thumbNailStart + v * thumbNailSpan) * THUMB_FLAT / 0.86,
+        tTip.distanceTo(tJ3) * 0.56, bi(thumbNames[2]), (v) => digitWeight(thumbNames, thumbNailStart + v * thumbNailSpan), hl.thumb.hingeNormals[2]);
+      // A concave thumb web has no radial "outward"; propagate the palm's winding
+      // across shared edges instead of guessing a normal at the saddle.
+      const edges = new Map(), adjacent = faces.map(() => []);
+      faces.forEach((face, f) => face.forEach((a, j) => {
+        const b = face[(j + 1) % 3], key = `${Math.min(a, b)},${Math.max(a, b)}`;
+        const prior = edges.get(key);
+        if (prior) {
+          const same = prior.a === a;
+          adjacent[f].push([prior.f, same]);
+          adjacent[prior.f].push([f, same]);
+        } else edges.set(key, { f, a });
+      }));
+      const flips = new Map([[0, false]]), queue = [0];
+      for (let i = 0; i < queue.length; i++) {
+        const f = queue[i];
+        for (const [next, same] of adjacent[f]) {
+          const flip = flips.get(f) !== same;
+          if (flips.has(next)) {
+            if (flips.get(next) !== flip) throw new Error(`Non-orientable hand surface: ${side}.`);
+          } else {
+            flips.set(next, flip);
+            queue.push(next);
+          }
+        }
+      }
+      if (flips.size !== faces.length) throw new Error(`Disconnected hand surface: ${side}.`);
+      faces.forEach(([a, b, c], f) => triangle(a, flips.get(f) ? c : b, flips.get(f) ? b : c, `hands_${side}`));
       return parts;
     }
 
@@ -2861,23 +3221,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       };
 
       // Per-joint finger/thumb curl tracks (curl = radians, bends toward the palm)
-      const fingerCurlTracks = (side, times, fingerCurls, thumbCurls) => {
-        const s = side === "L" ? 1 : -1;
-        const zq = (a) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -s * a);
-        const out = [];
-        FINGER_NAMES.forEach((nm, fi) => {
-          const k = 1 + fi * 0.06;
-          [1, 2, 3].forEach((j) => {
-            const q = zq(fingerCurls[j - 1] * k);
-            out.push(makeQuatTrack(`${nm}${j}_${side}`, times, times.map(() => q)));
-          });
-        });
-        const tn = [`Thumb_${side}`, `Thumb2_${side}`, `Thumb3_${side}`];
-        tn.forEach((name, j) => {
-          const q = zq(thumbCurls[j]);
-          out.push(makeQuatTrack(name, times, times.map(() => q)));
-        });
-        return out;
+      const fingerCurlTracks = (side, times, fingerCurls, thumbCurls, thumbPose = {}) => {
+        const pose = Array.isArray(fingerCurls[0]) || fingerCurls[0] > 0.5 ? HAND_GESTURES.grip : HAND_GESTURES.open;
+        const quats = handPoseQuaternions(side, { ...pose, ...thumbPose, curl: fingerCurls, thumb: thumbCurls });
+        return [...quats].map(([name, q]) => makeQuatTrack(name, times, times.map(() => q)));
       };
 
       const clips = {};
@@ -3061,7 +3408,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           makeQuatTrack("UpperArm_R", t, [eulerQ(-0.48, 0.16, 0.44), eulerQ(-0.48, 0.16, 0.44)]),
           makeQuatTrack("Forearm_R", t, [elbowFlexQ(-1, 1.25), elbowFlexQ(-1, 1.25)]),
           makeQuatTrack("Hand_R", t, [eulerQ(0.05, 0.25, 0.12), eulerQ(0.05, 0.25, 0.12)]),
-          ...fingerCurlTracks("R", t, [1.0, 1.25, 0.8], [0.45, 0.5, 0.35]),
+          // Cylindrical power grip around the 23 mm cup: fingers wrap it, thumb closes over the index.
+          ...fingerCurlTracks("R", t, [[0.90, 1.57, 0.70], [0.95, 1.57, 0.70],
+            [1.01, 1.57, 0.70], [1.06, 1.57, 0.70]], [0.01, 0.29, 0.22], { opposition: 0.92, abduction: 0.15 }),
           
         ]);
       }
@@ -3443,6 +3792,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const baseActions = {};
       const upperActions = {};
       const faceActions = {};
+      const upperSamples = Object.fromEntries(upperNames.map((name) => [name,
+        clips[name].tracks.filter((track) => track instanceof THREE.QuaternionKeyframeTrack).map((track) => ({
+          bone: track.name.slice(0, track.name.indexOf(".")), interpolant: track.createInterpolant(),
+        }))]));
 
       for (const n of baseNames) baseActions[n] = baseMixer.clipAction(clips[n]);
       for (const n of upperNames) upperActions[n] = upperMixer.clipAction(clips[n]);
@@ -3469,20 +3822,19 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         headYaw: 0, headPitch: 0, saccadeTimer: 1.2,
       };
 
-      // Natural relaxed finger/thumb curl baked into the rest pose (mesh was bound straight, so this just curls it)
-      {
-        const zAxis = new THREE.Vector3(0, 0, 1);
-        const relax = [0.20, 0.30, 0.16];
-        for (const side of ["L", "R"]) {
-          const s = side === "L" ? 1 : -1;
-          for (const nm of FINGER_NAMES) {
-            const extra = nm === "Pinky" ? 1.25 : nm === "Ring" ? 1.1 : 1;
-            [1, 2, 3].forEach((j) => rig.boneMap.get(`${nm}${j}_${side}`).quaternion.setFromAxisAngle(zAxis, -s * relax[j - 1] * extra));
-          }
-          rig.boneMap.get(`Thumb_${side}`).quaternion.setFromAxisAngle(zAxis, -s * 0.12);
-          rig.boneMap.get(`Thumb2_${side}`).quaternion.setFromAxisAngle(zAxis, -s * 0.16);
-          rig.boneMap.get(`Thumb3_${side}`).quaternion.setFromAxisAngle(zAxis, -s * 0.10);
+      const handGestures = { L: "auto", R: "auto" };
+      const currentHandQuats = new Map();
+      const openThumbQuats = { L: handPoseQuaternions("L", HAND_GESTURES.open), R: handPoseQuaternions("R", HAND_GESTURES.open) };
+      for (const side of ["L", "R"]) {
+        for (const [name, q] of handPoseQuaternions(side, HAND_GESTURES.relaxed)) {
+          rig.boneMap.get(name).quaternion.copy(q);
+          currentHandQuats.set(name, q.clone());
         }
+      }
+      function setHandGesture(name, side = "both") {
+        if (name !== "auto" && !Object.hasOwn(HAND_GESTURES, name)) throw new Error(`Unknown hand gesture: ${name}.`);
+        if (!["both", "L", "R"].includes(side)) throw new Error(`Unknown hand side: ${side}.`);
+        for (const key of side === "both" ? ["L", "R"] : [side]) handGestures[key] = name;
       }
 
       const restLocalPos = new Map();
@@ -3757,9 +4109,26 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
             bm.get(name).quaternion.copy(restLocalQuat.get(name));
           }
           upperMixer.update(dt);
+          // PropertyMixer skips unchanged values, but our frame reset still needs
+          // constant holding tracks. Sample the public tracks at each action's time.
+          const sampled = new Map();
+          for (const name of upperNames) {
+            const action = upperActions[name], weight = action.getEffectiveWeight();
+            if (!action.isRunning() || weight <= 0) continue;
+            for (const sample of upperSamples[name]) {
+              const q = new THREE.Quaternion().fromArray(sample.interpolant.evaluate(action.time));
+              const prior = sampled.get(sample.bone);
+              if (prior) {
+                prior.q.slerp(q, weight / (prior.weight + weight));
+                prior.weight += weight;
+              } else sampled.set(sample.bone, { q, weight });
+            }
+          }
           for (const name of RIGHT_ARM_BONES) {
             const b = bm.get(name);
-            const upperQ = b.quaternion.clone();
+            const sample = sampled.get(name);
+            const upperQ = restLocalQuat.get(name).clone();
+            if (sample) upperQ.slerp(sample.q, Math.min(1, sample.weight));
             b.quaternion.copy(baseArmQuats.get(name)).slerp(upperQ, upperBlend);
           }
         } else if (upperBlend <= 0.001 && targetUpper === 0 && activeUpperClip) {
@@ -3782,6 +4151,24 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
               const ikQ = b.quaternion.clone();
               b.quaternion.copy(preIkQuats.get(name)).slerp(ikQ, reachBlend);
             }
+          }
+        }
+
+        for (const side of ["L", "R"]) {
+          const gesture = handGestures[side];
+          const overlay = gesture === "auto" && side === "R" && upperBlend > 0.001;
+          const target = handPoseQuaternions(side, HAND_GESTURES[gesture === "auto" ? "relaxed" : gesture]);
+          // While fingers are still travelling, the thumb moves clear (open-hand thumb) so curling or
+          // uncurling fingers never sweep through it; it settles into its target once they arrive.
+          let fingerError = 0;
+          for (const [name, q] of target) if (!name.startsWith("Thumb")) fingerError = Math.max(fingerError, currentHandQuats.get(name).angleTo(q));
+          const clearThumb = !overlay && fingerError > 0.3;
+          const k = 1 - Math.exp(-14 * dt);
+          for (const [name, q] of target) {
+            const bone = bm.get(name), current = currentHandQuats.get(name);
+            const goal = overlay ? bone.quaternion : clearThumb && name.startsWith("Thumb") ? openThumbQuats[side].get(name) : q;
+            current.slerp(goal, k);
+            bone.quaternion.copy(current);
           }
         }
 
@@ -3865,6 +4252,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         mixers: { base: baseMixer, upper: upperMixer, face: faceMixer },
         faceSliders, physicsDescriptor,
         setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink, update,
+        setHandGesture,
+        get handGestures() { return { ...handGestures }; },
         headDesign: structuredClone(headParts.design), createHeadPreview, commitHeadPreview,
         setClothing, setOutfit, refreshClothingMaterials,
         get torsoDetails() { return structuredClone(torsoDetails); },
@@ -3952,16 +4341,16 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
     const heldProp = new THREE.Group();
     const cupBody = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.036, 0.032, 0.14, 18),
+      new THREE.CylinderGeometry(0.0115, 0.0105, 0.090, 24),
       new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.32, metalness: 0.15 })
     );
     const cupLid = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.039, 0.039, 0.016, 18),
+      new THREE.CylinderGeometry(0.0118, 0.0118, 0.006, 24),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
     );
-    cupLid.position.y = 0.075;
+    cupLid.position.y = 0.048;
     heldProp.add(cupBody, cupLid);
-    heldProp.rotation.x = Math.PI * 0.45;
+    heldProp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), handLayout(-1).across);
     heldProp.visible = false;
     character.physicsDescriptor.handSockets.right.add(heldProp);
 
@@ -4051,7 +4440,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     document.querySelectorAll("[data-outfit]").forEach((button) => {
       button.addEventListener("click", () => changeClothing(() => character.setOutfit(outfits[button.dataset.outfit])));
     });
-    const materialNames = ["Body Skin", "Tops / Sleeves", "Shorts / Trousers", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Foot Wraps", "Clothing Trim (reserved)", "Mouth / Gums", "Tongue"];
+    const materialNames = ["Body Skin", "Tops / Sleeves", "Shorts / Trousers", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Foot Wraps", "Clothing Trim (reserved)", "Mouth / Gums", "Tongue", "Nails"];
     const textureKeys = ["skin", "shirt", "shorts", "hair", null, "skin", null, null, null, null];
     const surfaceDefs = [
       ["roughness", "Roughness", 0, 1, 0.01],
@@ -4830,6 +5219,13 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         character.setFaceExpression(btn.dataset.face);
         setActiveGroupBtn(".face-btn", btn);
       });
+
+      document.querySelectorAll(".hand-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          character.setHandGesture(btn.dataset.hand);
+          setActiveGroupBtn(".hand-btn", btn);
+        });
+      });
     });
 
     document.getElementById("blinkNowBtn").addEventListener("click", () => character.triggerBlink());
@@ -4871,8 +5267,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     });
 
     let camLerp = null;
+    let focusedHand = null;
     function setCameraView(pos, target, activeBtnId) {
       if (headEditing) setHeadEditing(false);
+      focusedHand = null;
       camLerp = { pos: new THREE.Vector3(...pos), target: new THREE.Vector3(...target), t: 0 };
       ["camFullBtn", "camFaceBtn", "camHandsBtn"].forEach((id) => {
         const b = document.getElementById(id);
@@ -4885,7 +5283,21 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     }
     document.getElementById("camFullBtn").addEventListener("click", () => setCameraView([0.35, 1.35, 3.05], [0, 0.96, 0], "camFullBtn"));
     document.getElementById("camFaceBtn").addEventListener("click", () => setCameraView([0.08, 1.66, 0.58], [0, 1.64, 0.04], "camFaceBtn"));
-    document.getElementById("camHandsBtn").addEventListener("click", () => setCameraView([0.62, 1.06, 0.72], [0.58, 1.01, 0.0], "camHandsBtn"));
+    const handViewTarget = (side) => {
+      const hl = handLayout(side === "L" ? 1 : -1);
+      const local = hl.palmDir.clone().multiplyScalar(0.070);
+      return character.rig.boneMap.get(`Hand_${side}`).localToWorld(local);
+    };
+    function inspectHand(side) {
+      character.root.updateMatrixWorld(true);
+      const target = handViewTarget(side);
+      setCameraView(target.clone().add(new THREE.Vector3(side === "L" ? 0.12 : -0.12, 0.04, 0.34)).toArray(),
+        target.toArray(), "camHandsBtn");
+      focusedHand = side;
+    }
+    document.getElementById("camHandsBtn").addEventListener("click", () => inspectHand("L"));
+    document.getElementById("viewLeftHand").addEventListener("click", () => inspectHand("L"));
+    document.getElementById("viewRightHand").addEventListener("click", () => inspectHand("R"));
     document.getElementById("torsoFrontBtn").addEventListener("click", () => setCameraView([0.19, 1.33, 1.28], [0, 1.22, 0.03]));
     document.getElementById("torsoRearBtn").addEventListener("click", () => setCameraView([0.24, 1.18, -1.17], [0, 1.09, -0.04]));
 
@@ -4952,6 +5364,19 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         autoGaze: autoGazeEl.checked,
         reachTarget: reachOrb.visible ? reachOrb.position : null,
       });
+
+      if (focusedHand && !headEditing) {
+        character.root.updateMatrixWorld(true);
+        const target = handViewTarget(focusedHand);
+        const delta = target.clone().sub(camLerp ? camLerp.target : controls.target);
+        if (camLerp) {
+          camLerp.pos.add(delta);
+          camLerp.target.copy(target);
+        } else {
+          camera.position.add(delta);
+          controls.target.copy(target);
+        }
+      }
 
       controls.update();
       renderer.render(scene, camera);
