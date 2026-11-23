@@ -55,6 +55,7 @@
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
     import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
     const smoothstep = (e0, e1, x) => {
       const t = THREE.MathUtils.clamp((x - e0) / (e1 - e0), 0, 1);
       return t * t * (3 - 2 * t);
@@ -97,27 +98,31 @@
 
     // --- 0. Procedural Canvas PBR Textures & Physical Materials ---
     function createProceduralMaterials(palette = {}) {
-      const skinHex = palette.skin ?? "#c68b59";
-      const shirtHex = palette.shirt ?? "#2e5a88";
-      const shortsHex = palette.shorts ?? "#4a4e4d";
-      const hairHex = palette.hair ?? "#241c18";
+      if (!palette || typeof palette !== "object") palette = {};
+      const skinHex = palette.skin ?? palette.skinColor ?? "#c68b59";
+      const shirtHex = palette.shirt ?? palette.top ?? palette.torso ?? "#2e5a88";
+      const shortsHex = palette.shorts ?? palette.pants ?? palette.trousers ?? palette.legs ?? "#4a4e4d";
+      const hairHex = palette.hair ?? palette.hairColor ?? "#241c18";
       const textureSettings = {
         skinDetail: 1, skinColorVariation: 1, skinRoughnessVariation: 1,
         skinPoreDepth: 1, skinScattering: 0.35, skinThicknessScale: 1,
         shirtContrast: 0.28, shortsContrast: 0.34, hairContrast: 1,
         skinTileSize: 0.064, shirtRepeatX: 10, shirtRepeatY: 10,
         shortsRepeatX: 10, shortsRepeatY: 10, hairRepeatX: 10, hairRepeatY: 3,
-        ...palette.textures,
+        ...(palette.textures && typeof palette.textures === "object" ? palette.textures : {}),
       };
-      if (!Number.isFinite(textureSettings.skinTileSize) || textureSettings.skinTileSize <= 0) {
-        throw new RangeError("palette.textures.skinTileSize must be a positive finite size in meters.");
+      if (!Number.isFinite(Number(textureSettings.skinTileSize)) || Number(textureSettings.skinTileSize) <= 0) {
+        textureSettings.skinTileSize = 0.064;
+      } else {
+        textureSettings.skinTileSize = Number(textureSettings.skinTileSize);
       }
-      for (const [key, min, max] of [
-        ["skinPoreDepth", 0, 2], ["skinScattering", 0, 1], ["skinThicknessScale", 0.25, 4],
+      for (const [key, min, max, fallback] of [
+        ["skinPoreDepth", 0, 2, 1],
+        ["skinScattering", 0, 1, 0.35],
+        ["skinThicknessScale", 0.25, 4, 1],
       ]) {
-        if (!Number.isFinite(textureSettings[key]) || textureSettings[key] < min || textureSettings[key] > max) {
-          throw new RangeError(`palette.textures.${key} must be between ${min} and ${max}.`);
-        }
+        const num = Number(textureSettings[key]);
+        textureSettings[key] = Number.isFinite(num) ? THREE.MathUtils.clamp(num, min, max) : fallback;
       }
 
       // Tileable value-noise helpers
@@ -150,7 +155,15 @@
         t.anisotropy = 8;
         return t;
       };
-      const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+      const rgb = (h) => {
+        if (typeof h === "string" && /^#[0-9a-fA-F]{6}$/.test(h)) {
+          const n = parseInt(h.slice(1), 16);
+          return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        }
+        const hex = new THREE.Color(h ?? "#c68b59").getHexString();
+        const n = parseInt(hex, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      };
 
       // Only microdetail tiles; broad tone variation is evaluated in rest-space below.
       function makeSkinTextures(hex) {
@@ -357,14 +370,20 @@ roughnessFactor = clamp(
             .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
             .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
           shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
-          const diffuseLine = "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );";
+          const diffuseLineModern = "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );";
+          const diffuseLineLegacy = "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );";
           const physicalChunk = THREE.ShaderChunk.lights_physical_pars_fragment;
-          if (!physicalChunk.includes(diffuseLine)) {
-            throw new Error("Skin scattering requires the supported Three.js physical diffuse shader.");
-          }
-          // DirectLight.color already includes shadow attenuation. Leave all specular lobes untouched.
-          shader.fragmentShader = shader.fragmentShader.replace("#include <lights_physical_pars_fragment>",
-            physicalChunk.replace(diffuseLine, `
+          const activeDiffuseLine = physicalChunk.includes(diffuseLineModern)
+            ? diffuseLineModern
+            : physicalChunk.includes(diffuseLineLegacy)
+            ? diffuseLineLegacy
+            : null;
+          if (activeDiffuseLine) {
+            const diffuseVar = activeDiffuseLine === diffuseLineModern ? "material.diffuseContribution" : "material.diffuseColor";
+            const fresnelTerm = activeDiffuseLine === diffuseLineModern ? "(1.0 - F)" : "1.0";
+            // DirectLight.color already includes shadow attenuation. Leave all specular lobes untouched.
+            shader.fragmentShader = shader.fragmentShader.replace("#include <lights_physical_pars_fragment>",
+              physicalChunk.replace(activeDiffuseLine, `
 float skinDotNL = dot(geometryNormal, directLight.direction);
 float skinWrapped = max(skinDotNL + 0.3, 0.0) / (1.3 * 1.3);
 vec3 skinAttenuation = exp(-vec3(skinThicknessMm(vSkinRestPosition)) / vec3(3.5, 1.3, 0.65));
@@ -379,10 +398,11 @@ vec3 skinExitFresnel = F_Schlick(
   material.specularColor, material.specularF90, saturate(dot(geometryNormal, geometryViewDir))
 );
 vec3 skinDiffuseIrradiance = mix(
-  irradiance * (1.0 - F), skinScattered * (1.0 - skinExitFresnel), skinScattering
+  irradiance * ${fresnelTerm}, skinScattered * (1.0 - skinExitFresnel), skinScattering
 );
-reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
+reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( ${diffuseVar} );
 `));
+          }
         };
         material.customProgramCacheKey = () => "skin-rest-triplanar-v7-filtered-tone";
       }
@@ -991,21 +1011,45 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     };
 
     function configureTorsoDetails(current, changes = {}) {
-      for (const [key, values] of Object.entries(changes)) {
-        if (!Object.hasOwn(TORSO_DETAILS, key) || !values || typeof values !== "object" || Array.isArray(values)) {
-          throw new Error(`Invalid torso detail: ${key}.`);
+      if (!changes || typeof changes !== "object" || Array.isArray(changes)) changes = {};
+      const groupAliases = {
+        pecs: "pectorals", chest: "pectorals",
+        clavicles: "collarbones", collarbone: "collarbones",
+        abs: "abdominals", stomach: "abdominals",
+        glutes: "buttocks", hips: "buttocks",
+      };
+      const normalizedChanges = {};
+      for (const [rawKey, rawValues] of Object.entries(changes)) {
+        const key = Object.hasOwn(TORSO_DETAILS, rawKey) ? rawKey : groupAliases[rawKey];
+        if (!key || rawValues === undefined || rawValues === null) continue;
+        if (typeof rawValues === "boolean") {
+          normalizedChanges[key] = { ...normalizedChanges[key], enabled: rawValues };
+          continue;
         }
-        for (const [name, value] of Object.entries(values)) {
-          const slider = TORSO_DETAILS[key].sliders.find(([id]) => id === name);
-          if (name === "enabled" ? typeof value !== "boolean"
-            : !slider || !Number.isFinite(value) || value < slider[2] || value > slider[3]) {
-            throw new Error(`Invalid torso detail parameter: ${key}.${name}.`);
+        if (typeof rawValues !== "object" || Array.isArray(rawValues)) continue;
+        const clean = {};
+        let hasSliderOverride = false;
+        for (const [name, value] of Object.entries(rawValues)) {
+          if (value === undefined || value === null) continue;
+          if (name === "enabled") {
+            clean.enabled = Boolean(value);
+            continue;
           }
+          const slider = TORSO_DETAILS[key].sliders.find(([id]) => id === name);
+          if (!slider) continue;
+          const num = Number(value);
+          if (!Number.isFinite(num)) continue;
+          clean[name] = THREE.MathUtils.clamp(num, slider[2], slider[3]);
+          hasSliderOverride = true;
         }
+        if (hasSliderOverride && clean.enabled === undefined && current?.[key]?.enabled === undefined) {
+          clean.enabled = true;
+        }
+        normalizedChanges[key] = { ...normalizedChanges[key], ...clean };
       }
       return Object.fromEntries(Object.entries(TORSO_DETAILS).map(([key, { enabled, sliders }]) => [
         key, { enabled, ...Object.fromEntries(sliders.map(([name, , , , , value]) => [name, value])),
-          ...current?.[key], ...changes[key] },
+          ...current?.[key], ...normalizedChanges[key] },
       ]));
     }
 
@@ -1754,6 +1798,20 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     }
 
     // --- 2E. Sculpted Deformable Head, Oral Cavity, Eyes, Eyelids, Ears, Brows & Hair ---
+    const HEAD_TARGET_ALIASES = {
+      head: "skin", face: "skin", skull: "skin",
+      eye: "eyes", eyelids: "eyes", upperLid: "lidTop", lowerLid: "lidBot",
+      eyebrows: "brows", brow: "brows", ear: "ears",
+      mouth: "cavity", tongue: "cavity",
+    };
+
+    const HEAD_FEATURE_ALIASES = {
+      nose: "noseTip", noseBridge: "noseTip",
+      cheek: "cheeks", cheekbones: "cheeks",
+      jaw: "jawWidth", mandible: "jawWidth",
+      lip: "lips", mouth: "lips",
+    };
+
     function headTargetTags(target) {
       const tags = {
         all: ["head", "eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R", "brow_L", "brow_R", "ear_L", "ear_R", "teethTop", "teethBot", "cavity", "tongue", "hair"],
@@ -1762,43 +1820,95 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         brows: ["brow_L", "brow_R"], ears: ["ear_L", "ear_R"],
         hair: ["hair"], teeth: ["teethTop", "teethBot"], cavity: ["cavity", "tongue"],
       };
-      if (!tags[target]) throw new Error(`Unknown head part: ${target}`);
-      return tags[target];
+      const resolved = tags[target] ? target : HEAD_TARGET_ALIASES[target];
+      return tags[resolved] ?? [];
+    }
+
+    function normalizeHeadDesign(design) {
+      if (!design || typeof design !== "object" || Array.isArray(design)) {
+        return { transforms: {}, features: {}, strokes: [] };
+      }
+      const validTargets = new Set(["all", "skin", "eyes", "lidTop", "lidBot", "brows", "ears", "hair", "teeth", "cavity"]);
+      const featureKeys = new Set(["forehead", "noseWidth", "noseTip", "cheeks", "jawWidth", "chin", "lips"]);
+
+      const rawTransforms = (design.transforms && typeof design.transforms === "object" && !Array.isArray(design.transforms))
+        ? { ...design.transforms } : {};
+      const rawFeatures = (design.features && typeof design.features === "object" && !Array.isArray(design.features))
+        ? { ...design.features } : {};
+
+      // Support top-level feature or transform keys passed directly on headDesign
+      for (const [k, v] of Object.entries(design)) {
+        if (k === "transforms" || k === "features" || k === "strokes" || v === undefined || v === null) continue;
+        const featKey = featureKeys.has(k) ? k : HEAD_FEATURE_ALIASES[k];
+        const targKey = validTargets.has(k) ? k : HEAD_TARGET_ALIASES[k];
+        if (featKey && typeof v !== "object" && Number.isFinite(Number(v))) {
+          if (rawFeatures[featKey] === undefined) rawFeatures[featKey] = Number(v);
+        } else if (targKey && typeof v === "object" && !Array.isArray(v)) {
+          if (rawTransforms[targKey] === undefined) rawTransforms[targKey] = v;
+        }
+      }
+
+      const transforms = {};
+      for (const [rawTarget, transform] of Object.entries(rawTransforms)) {
+        if (!transform || typeof transform !== "object" || Array.isArray(transform)) continue;
+        const target = validTargets.has(rawTarget) ? rawTarget : HEAD_TARGET_ALIASES[rawTarget];
+        if (!target) continue;
+        const clean = {};
+        for (const key of ["sx", "sy", "sz", "x", "y", "z"]) {
+          if (transform[key] === undefined || transform[key] === null) continue;
+          const num = Number(transform[key]);
+          if (!Number.isFinite(num)) continue;
+          clean[key] = key.startsWith("s") ? THREE.MathUtils.clamp(num, 0.1, 10) : num;
+        }
+        if (Object.keys(clean).length > 0) {
+          transforms[target] = { ...transforms[target], ...clean };
+        }
+      }
+
+      const features = {};
+      for (const [rawKey, value] of Object.entries(rawFeatures)) {
+        if (value === undefined || value === null) continue;
+        const key = featureKeys.has(rawKey) ? rawKey : HEAD_FEATURE_ALIASES[rawKey];
+        const num = Number(value);
+        if (!key || !Number.isFinite(num)) continue;
+        features[key] = num;
+      }
+
+      const strokes = [];
+      if (Array.isArray(design.strokes)) {
+        for (const stroke of design.strokes) {
+          if (!stroke || typeof stroke !== "object") continue;
+          const target = validTargets.has(stroke.target) ? stroke.target : HEAD_TARGET_ALIASES[stroke.target];
+          if (!target) continue;
+          if (!["raise", "lower", "move", "smooth"].includes(stroke.mode)) continue;
+          const radius = Number(stroke.radius);
+          const strength = THREE.MathUtils.clamp(Number(stroke.strength ?? 0.4), 0, 1);
+          if (!Number.isFinite(radius) || radius <= 0) continue;
+          if (![stroke.center, stroke.delta].every((v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite))) continue;
+          strokes.push({
+            target,
+            mode: stroke.mode,
+            radius,
+            strength,
+            center: stroke.center.map(Number),
+            delta: stroke.delta.map(Number),
+            mirror: Boolean(stroke.mirror),
+            ...(Number.isFinite(stroke.mirrorX) ? { mirrorX: Number(stroke.mirrorX) } : {}),
+          });
+        }
+      }
+
+      return { transforms, features, strokes };
     }
 
     function validateHeadDesign(design) {
-      if (!design || typeof design !== "object" ||
-          !design.transforms || typeof design.transforms !== "object" || Array.isArray(design.transforms) ||
-          !design.features || typeof design.features !== "object" || Array.isArray(design.features) || !Array.isArray(design.strokes)) {
-        throw new Error("Head design must contain transforms, features, and strokes.");
+      const normalized = normalizeHeadDesign(design);
+      if (design && typeof design === "object" && !Array.isArray(design)) {
+        design.transforms = normalized.transforms;
+        design.features = normalized.features;
+        design.strokes = normalized.strokes;
       }
-      for (const [target, transform] of Object.entries(design.transforms)) {
-        headTargetTags(target);
-        if (!transform || typeof transform !== "object" || Array.isArray(transform) ||
-            Object.keys(transform).some((key) => !["sx", "sy", "sz", "x", "y", "z"].includes(key))) {
-          throw new Error(`Invalid head transform: ${target}`);
-        }
-        for (const key of ["sx", "sy", "sz", "x", "y", "z"]) {
-          if (transform[key] !== undefined && (!Number.isFinite(transform[key]) || (key.startsWith("s") && transform[key] <= 0))) {
-            throw new Error(`Invalid head transform: ${target}.${key}`);
-          }
-        }
-      }
-      const featureKeys = ["forehead", "noseWidth", "noseTip", "cheeks", "jawWidth", "chin", "lips"];
-      for (const [key, value] of Object.entries(design.features)) {
-        if (!featureKeys.includes(key) || !Number.isFinite(value)) throw new Error(`Invalid head contour: ${key}`);
-      }
-      for (const stroke of design.strokes) {
-        if (!stroke || typeof stroke !== "object") throw new Error("Invalid procedural head brush stroke.");
-        headTargetTags(stroke.target);
-        if (!["raise", "lower", "move", "smooth"].includes(stroke.mode) ||
-            !Number.isFinite(stroke.radius) || stroke.radius <= 0 ||
-            !Number.isFinite(stroke.strength) || stroke.strength < 0 || stroke.strength > 1 ||
-            ![stroke.center, stroke.delta].every((v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite)) ||
-            typeof stroke.mirror !== "boolean" || (stroke.mirrorX !== undefined && !Number.isFinite(stroke.mirrorX))) {
-          throw new Error("Invalid procedural head brush stroke.");
-        }
-      }
+      return normalized;
     }
 
     function headSculptTopology(geo) {
@@ -1980,10 +2090,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     }
 
     function buildHeadAndFaceParts(rig, design = null) {
-      const defaults = { transforms: {}, features: {}, strokes: [] };
+      const normalized = normalizeHeadDesign(design);
       const parts = buildBaseHeadAndFaceParts(rig);
-      applyHeadDesign(parts, rig, design ?? defaults);
-      parts.design = structuredClone(design ?? defaults);
+      applyHeadDesign(parts, rig, normalized);
+      parts.design = structuredClone(normalized);
       return parts;
     }
 
@@ -3574,6 +3684,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
     // --- 5. Master Factory: createAdultMaleCharacter(options) ---
     function createAdultMaleCharacter(options = {}) {
+      if (!options || typeof options !== "object") options = {};
       const rig = createHumanoidSkeleton();
       const materials = createProceduralMaterials(options.palette);
 
@@ -3651,22 +3762,57 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         }
         index.needsUpdate = true;
       };
-      const validateClothing = (slot, item) => {
-        if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot], item)) {
-          throw new Error(`Unknown clothing item ${slot}: ${item}.`);
+      const slotAliases = {
+        top: "torso", shirt: "torso", chest: "torso",
+        sleeves: "arms", sleeve: "arms", arm: "arms",
+        bottom: "legs", pants: "legs", trousers: "legs", shorts: "legs", leg: "legs",
+        shoes: "feet", footwear: "feet", foot: "feet",
+      };
+      const itemAliases = {
+        torso: {
+          tshirt: "shirt", "t-shirt": "shirt", top: "shirt", tee: "shirt", jacket: "shirt", hoodie: "shirt", vest: "shirt", sweater: "shirt", tunic: "shirt", true: "shirt",
+          crop: "cropped", "cropped-top": "cropped", cropped_top: "cropped", tank: "cropped", singlet: "cropped",
+        },
+        arms: {
+          "short-sleeves": "short", short_sleeves: "short", tshirt: "short", tee: "short", true: "short",
+          "long-sleeves": "long", long_sleeves: "long", sleeves: "long", full: "long", jacket: "long",
+        },
+        legs: {
+          short: "shorts", trunks: "shorts", briefs: "shorts", true: "shorts",
+          pants: "trousers", jeans: "trousers", slacks: "trousers", long: "trousers", leggings: "trousers",
+        },
+        feet: {
+          shoes: "wraps", boots: "wraps", sneakers: "wraps", sandals: "wraps", socks: "wraps", footwraps: "wraps", footwear: "wraps", true: "wraps",
+          bare: "none", barefoot: "none",
+        },
+      };
+      const normalizeClothing = (rawSlot, rawItem) => {
+        const slot = Object.hasOwn(CLOTHING_ITEMS, rawSlot) ? rawSlot : slotAliases[rawSlot];
+        if (!slot) return null;
+        if (rawItem === undefined || rawItem === null || rawItem === false || rawItem === "" || rawItem === "none") {
+          return { slot, item: "none" };
         }
+        const str = String(rawItem).toLowerCase();
+        const item = Object.hasOwn(CLOTHING_ITEMS[slot], rawItem)
+          ? rawItem
+          : Object.hasOwn(CLOTHING_ITEMS[slot], str)
+          ? str
+          : itemAliases[slot]?.[str] ?? "none";
+        return { slot, item };
       };
       function setClothing(slotName, item) {
-        validateClothing(slotName, item);
-        const slot = clothingSlots[slotName];
-        if (slot.item === item) return;
+        const norm = normalizeClothing(slotName, item);
+        if (!norm) return;
+        const { slot: resolvedSlot, item: resolvedItem } = norm;
+        const slot = clothingSlots[resolvedSlot];
+        if (slot.item === resolvedItem) return;
         let mesh = null;
-        if (item !== "none") {
-          const geo = buildClothingGeometry(bodyParts, slotName, item);
-          const materialIndex = slotName === "legs" ? 2 : slotName === "feet" ? 7 : 1;
+        if (resolvedItem !== "none") {
+          const geo = buildClothingGeometry(bodyParts, resolvedSlot, resolvedItem);
+          const materialIndex = resolvedSlot === "legs" ? 2 : resolvedSlot === "feet" ? 7 : 1;
           geo.userData.materialIndex = materialIndex;
           mesh = new THREE.SkinnedMesh(geo, skinnedMesh.material[materialIndex]);
-          mesh.name = `Clothing_${slotName}_${item}`;
+          mesh.name = `Clothing_${resolvedSlot}_${resolvedItem}`;
           mesh.castShadow = mesh.receiveShadow = true;
           mesh.frustumCulled = false;
           // Never recalculate inverses in an animated pose: every garment uses the original bind matrix.
@@ -3677,13 +3823,18 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           slot.mesh.geometry.dispose();
         }
         slot.mesh = mesh;
-        slot.item = item;
+        slot.item = resolvedItem;
         if (mesh) clothingRoot.add(mesh);
         updateClothingCoverage();
       }
       function setOutfit(outfit = {}) {
-        for (const [slot, item] of Object.entries(outfit)) validateClothing(slot, item);
-        for (const slot of Object.keys(clothingSlots)) setClothing(slot, outfit[slot] ?? "none");
+        if (!outfit || typeof outfit !== "object") outfit = {};
+        const mapped = { torso: "none", arms: "none", legs: "none", feet: "none" };
+        for (const [rawSlot, rawItem] of Object.entries(outfit)) {
+          const norm = normalizeClothing(rawSlot, rawItem);
+          if (norm) mapped[norm.slot] = norm.item;
+        }
+        for (const slot of Object.keys(clothingSlots)) setClothing(slot, mapped[slot]);
       }
       function refreshClothingMaterials() {
         for (const slot of Object.values(clothingSlots)) {
@@ -3744,10 +3895,26 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           currentHandQuats.set(name, q.clone());
         }
       }
+      const gestureAliases = {
+        fist: "grip", closed: "grip", grab: "grip", hold: "grip",
+        pointing: "point", index: "point",
+        thumbs_up: "thumbsUp", "thumbs-up": "thumbsUp", thumbup: "thumbsUp", like: "thumbsUp",
+        splay: "spread", wide: "spread",
+        rest: "relaxed", neutral: "relaxed",
+        default: "auto", follow: "auto",
+      };
+      const sideAliases = {
+        left: "L", l: "L", L: "L",
+        right: "R", r: "R", R: "R",
+        both: "both", all: "both",
+      };
       function setHandGesture(name, side = "both") {
-        if (name !== "auto" && !Object.hasOwn(HAND_GESTURES, name)) throw new Error(`Unknown hand gesture: ${name}.`);
-        if (!["both", "L", "R"].includes(side)) throw new Error(`Unknown hand side: ${side}.`);
-        for (const key of side === "both" ? ["L", "R"] : [side]) handGestures[key] = name;
+        const rawName = String(name ?? "auto");
+        const resolvedName = rawName === "auto" || Object.hasOwn(HAND_GESTURES, rawName)
+          ? rawName
+          : gestureAliases[rawName.toLowerCase()] ?? "auto";
+        const resolvedSide = sideAliases[String(side ?? "both")] ?? "both";
+        for (const key of resolvedSide === "both" ? ["L", "R"] : [resolvedSide]) handGestures[key] = resolvedName;
       }
 
       const restLocalPos = new Map();
@@ -3839,39 +4006,77 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
       let blinkTimer = 2.4;
 
+      const baseAnimAliases = {
+        walk: "walking", stroll: "walking",
+        run: "running", sprint: "running", jog: "running",
+        jump: "jumping", hop: "jumping",
+        crouch: "crouching", sneak: "crouching", squat: "crouching",
+        sit: "sitting", seated: "sitting",
+        stand: "idle", standing: "idle", rest: "idle", default: "idle",
+      };
       function setBaseAnimation(name) {
-        if (!baseActions[name] || name === activeBase) return;
+        const key = String(name ?? "idle").toLowerCase();
+        const resolved = baseActions[name] ? name : baseActions[key] ? key : baseAnimAliases[key];
+        if (!resolved || !baseActions[resolved] || resolved === activeBase) return;
         const prev = baseActions[activeBase];
-        const next = baseActions[name];
+        const next = baseActions[resolved];
         next.reset().setEffectiveWeight(1).play();
         prev.crossFadeTo(next, 0.25, false);
-        activeBase = name;
+        activeBase = resolved;
       }
 
+      const upperAnimAliases = {
+        wave: "waving", greet: "waving", hello: "waving",
+        hold: "holding", carry: "holding", cup: "holding", prop: "holding",
+        reach: "reaching", ik: "reaching", point: "reaching",
+        off: "none", clear: "none", idle: "none", default: "none",
+      };
       function setUpperAnimation(name) {
-        if (name === activeUpper) return;
-        if (upperActions[name]) {
-          if (activeUpperClip && activeUpperClip !== name && upperActions[activeUpperClip]) {
+        const raw = name ? String(name) : "none";
+        const key = raw.toLowerCase();
+        const resolved = (raw === "none" || raw === "reaching" || upperActions[raw])
+          ? raw
+          : (key === "none" || key === "reaching" || upperActions[key])
+          ? key
+          : upperAnimAliases[key] ?? "none";
+        if (resolved === activeUpper) return;
+        if (upperActions[resolved]) {
+          if (activeUpperClip && activeUpperClip !== resolved && upperActions[activeUpperClip]) {
             const prev = upperActions[activeUpperClip];
-            const next = upperActions[name];
+            const next = upperActions[resolved];
             next.reset().setEffectiveWeight(1).play();
             prev.crossFadeTo(next, 0.2, false);
           } else {
-            upperActions[name].reset().setEffectiveWeight(1).play();
+            upperActions[resolved].reset().setEffectiveWeight(1).play();
           }
-          activeUpperClip = name;
+          activeUpperClip = resolved;
         }
-        activeUpper = name;
+        activeUpper = resolved;
       }
 
+      const faceAnimAliases = {
+        smile: "smiling", happy: "smiling", joy: "smiling", grin: "smiling",
+        frown: "frowning", sad: "frowning", angry: "frowning", mad: "frowning", scowl: "frowning",
+        shock: "shocked", surprised: "shocked", surprise: "shocked", gasp: "shocked",
+        doubt: "skeptical", confused: "skeptical", quizzical: "skeptical",
+        speak: "speaking", talk: "speaking", talking: "speaking", chat: "speaking",
+        rest: "neutral", idle: "neutral", default: "neutral", none: "neutral",
+      };
       function setFaceExpression(name) {
-        if (name === activeFace) return;
+        const raw = name ? String(name) : "neutral";
+        const key = raw.toLowerCase();
+        const resolved = (raw === "neutral" || faceActions[raw])
+          ? raw
+          : (key === "neutral" || faceActions[key])
+          ? key
+          : faceAnimAliases[key] ?? "neutral";
+        if (resolved === activeFace) return;
         if (activeFace !== "neutral" && faceActions[activeFace]) {
           faceActions[activeFace].fadeOut(0.2);
         }
-        activeFace = name;
-        if (name !== "neutral" && faceActions[name]) {
-          faceActions[name].reset().setEffectiveWeight(1).fadeIn(0.2).play();
+        activeFace = resolved;
+        if (resolved !== "neutral" && faceActions[resolved]) {
+          faceActions[resolved].reset().setEffectiveWeight(1).fadeIn(0.2).play();
         }
       }
 
@@ -4173,7 +4378,6 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         setTorsoDetails, resetTorsoDetails,
       };
     }
-
     // =========================================================================
     // THREE.JS WALKING SCENE
     // =========================================================================

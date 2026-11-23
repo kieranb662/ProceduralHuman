@@ -82,6 +82,7 @@ const character = createAdultMaleCharacter({
     buttocks:    { enabled: true,  depth: 44, width: 100, cleft: 23 }, // depth: 0..65mm, width: 70..135%, cleft: 0..30mm
   },
   headDesign: {
+    // All sub-properties (transforms, features, strokes) are optional.
     // Part scale (sx, sy, sz > 0) and millimeter offsets (x, y, z in -30..30)
     // Targets: "all" | "skin" | "eyes" | "lidTop" | "lidBot" | "brows" | "ears" | "hair" | "teeth" | "cavity"
     transforms: {
@@ -97,7 +98,6 @@ const character = createAdultMaleCharacter({
       chin: 0,
       lips: 0,
     },
-    strokes: [],
   },
   outfit: {
     torso: "shirt",  // "none" | "shirt" | "cropped"

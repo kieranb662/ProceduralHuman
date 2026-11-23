@@ -77,13 +77,12 @@ const character = createAdultMaleCharacter({
     buttocks:    { enabled: true,  depth: 44, width: 100, cleft: 23 },
   },
 
-  // 3. Facial Proportions, Part Transforms & Feature Contours
+  // 3. Facial Proportions, Part Transforms & Feature Contours (all sub-fields optional)
   headDesign: {
     transforms: {
       // Targets: "all" | "skin" | "eyes" | "lidTop" | "lidBot" | "brows" | "ears" | "hair" | "teeth" | "cavity"
       // sx/sy/sz: scale multipliers (>0); x/y/z: offset in millimeters
       all:   { sx: 1.0, sy: 1.0, sz: 1.0 },
-      jaw:   undefined, // use features.jawWidth / features.chin below
       brows: { sy: 1.05, y: 1.0 },
       ears:  { sx: 1.0, sy: 1.0, sz: 1.0 },
     },
@@ -97,7 +96,6 @@ const character = createAdultMaleCharacter({
       chin: 0,
       lips: 0,
     },
-    strokes: [], // Optional array of procedural 3D brush dabs
   },
 
   // 4. Removable Clothing Slots
