@@ -142,6 +142,17 @@
           </label>
           <div class="grid grid-cols-2 gap-2">
             <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Tongue Out</span><span id="valTongueOut">0.00</span></div>
+              <input id="slTongueOut" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Tongue Tip Bend</span><span id="valTongueCurl">0.00</span></div>
+              <input id="slTongueCurl" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+          </div>
+          <p class="text-[11px] text-slate-400">The tongue rests behind the lower incisors. Tongue Out opens the jaw for clearance; Tip Bend curls the exposed tip up or down. API: character.faceSliders.tongueOut (0-1), tongueCurl (-1 to 1). TongueBase, TongueMid and TongueTip are jaw-parented animation bones.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
               <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>FACS Smile</span><span id="valSmile">0.00</span></div>
               <input id="slSmile" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
             </label>
@@ -374,6 +385,7 @@
 
     const FACIAL_BONES = [
       "Jaw", "LowerLip_C", "LowerLip_L", "LowerLip_R",
+      "TongueBase", "TongueMid", "TongueTip",
       "UpperLip_C", "UpperLip_L", "UpperLip_R",
       "MouthCorner_L", "MouthCorner_R",
       "Eye_L", "Eye_R",
@@ -782,8 +794,34 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const hairTex = makeHairTextures(hairHex);
       const eyeMap = makeEyeTexture();
 
+      function makeOralTextures(enamel) {
+        const S = 256, col = mk(S), bmp = mk(S);
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            const u = x / S, v = y / S, i = (y * S + x) * 4;
+            const noise = fbm(u, v, 12, 3, 71) - 0.5;
+            const grain = hash2(x, y, 72);
+            if (enamel) {
+              const neck = smoothstep(0.55, 1, v);
+              const striation = Math.sin(u * Math.PI * 64) * 0.7;
+              col.img.data.set([248 + noise * 5 - neck * 12, 245 + noise * 5 - neck * 17, 233 + noise * 4 - neck * 23, 255], i);
+              const h = 128 + noise * 4 + striation;
+              bmp.img.data.set([h, h, h, 255], i);
+            } else {
+              const papilla = Math.max(0, grain - 0.72) * 55;
+              col.img.data.set([190 + noise * 18 + papilla * 0.35, 91 + noise * 12 + papilla * 0.25, 102 + noise * 12 + papilla * 0.25, 255], i);
+              const h = 128 + noise * 9 + papilla;
+              bmp.img.data.set([h, h, h, 255], i);
+            }
+          }
+        }
+        return { map: finish(col, true, [1, 1]), bump: finish(bmp, false, [1, 1]) };
+      }
+      const enamelTex = makeOralTextures(true);
+      const oralTex = makeOralTextures(false);
+
       // 0: Body Skin, 1: T-Shirt, 2: Shorts, 3: Hair/Brows,
-      // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Tongue
+      // 4: Eyeball, 5: Head Skin (vertexColors), 6: Teeth, 7: Foot Wraps, 8: Clothing Trim, 9: Oral Mucosa/Gums, 10: Tongue
       const materials = [
         new THREE.MeshPhysicalMaterial({
           map: skinTex.map, bumpMap: skinTex.bump, bumpScale: 0.0004,
@@ -816,19 +854,43 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           clearcoat: 0.08, clearcoatRoughness: 0.48,
         }),
         new THREE.MeshPhysicalMaterial({
-          color: 0xf2eee4, roughness: 0.22, metalness: 0.0, clearcoat: 0.6, clearcoatRoughness: 0.15,
+          map: enamelTex.map, bumpMap: enamelTex.bump, bumpScale: 0.000025,
+          color: 0xffffff, vertexColors: true, roughness: 0.25, metalness: 0.0,
+          clearcoat: 0.65, clearcoatRoughness: 0.16, ior: 1.62,
         }),
         new THREE.MeshStandardMaterial({ color: 0xebeef2, roughness: 0.90, metalness: 0.0 }),
         new THREE.MeshStandardMaterial({ color: 0x262c36, roughness: 0.62, metalness: 0.05 }),
         new THREE.MeshPhysicalMaterial({
-          color: 0x7b3337, roughness: 0.34, metalness: 0.0,
-          clearcoat: 0.55, clearcoatRoughness: 0.22, side: THREE.DoubleSide,
+          map: oralTex.map, bumpMap: oralTex.bump, bumpScale: 0.00006,
+          color: 0xffffff, vertexColors: true, roughness: 0.60, metalness: 0.0,
+          clearcoat: 0.08, clearcoatRoughness: 0.50, envMapIntensity: 0.35, side: THREE.DoubleSide,
+        }),
+        new THREE.MeshPhysicalMaterial({
+          map: oralTex.map, bumpMap: oralTex.bump, bumpScale: 0.00012,
+          color: 0xffffff, vertexColors: true, roughness: 0.43, metalness: 0.0,
+          clearcoat: 0.45, clearcoatRoughness: 0.25, side: THREE.DoubleSide,
         }),
       ];
       materials.forEach((material, index) => {
         if (palette.materials?.[index]) material.setValues(palette.materials[index]);
         if (index === 0 || index === 5) applySkinMapping(material);
       });
+      // Deep oral surfaces are occluded: scale specular/clearcoat by the baked vertex-colour depth
+      // so the throat stays dark instead of catching the key light.
+      for (const index of [9, 10]) {
+        materials[index].onBeforeCompile = (shader) => {
+          shader.fragmentShader = shader.fragmentShader.replace("#include <aomap_fragment>", `#include <aomap_fragment>
+          #if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )
+            float oralOcclusion = clamp((max(vColor.r, max(vColor.g, vColor.b)) - 0.04) * 2.4, 0.0, 1.0);
+            reflectedLight.directSpecular *= oralOcclusion;
+            reflectedLight.indirectSpecular *= oralOcclusion;
+            #ifdef USE_CLEARCOAT
+              clearcoatSpecularDirect *= oralOcclusion;
+              clearcoatSpecularIndirect *= oralOcclusion;
+            #endif
+          #endif`);
+        };
+      }
       return materials;
     }
 
@@ -895,6 +957,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       addBone("Head", "Neck", 0, 1.56, 0.004);
 
       addBone("Jaw", "Head", 0, 1.622, 0.018);
+      addBone("TongueBase", "Jaw", 0, 1.5830, 0.066);
+      addBone("TongueMid", "TongueBase", 0, 1.5833, 0.082);
+      addBone("TongueTip", "TongueMid", 0, 1.5837, 0.095);
       addBone("LowerLip_C", "Jaw", 0, 1.586, 0.116);
       addBone("LowerLip_L", "Jaw", 0.015, 1.588, 0.112);
       addBone("LowerLip_R", "Jaw", -0.015, 1.588, 0.112);
@@ -1289,6 +1354,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         return (r ? columns : coarseToFine.map((j) => columns[j])).map((j) => {
           const a = j / coarseSegs * Math.PI * 2;
           const v = new THREE.Vector3(-Math.cos(a) * p.rx, y, p.cz + Math.sin(a) * p.rz);
+          // The hidden neck core must stay behind the oral lumen, including an open jaw.
+          const oralClearance = smoothstep(1.53, 1.575, y)
+            * smoothstep(0.050, 0.030, Math.abs(v.x)) * smoothstep(0, 0.045, v.z);
+          v.z = THREE.MathUtils.lerp(v.z, 0.012, oralClearance);
           return addVertex(v, torsoWeight(v));
         });
       });
@@ -1566,11 +1635,11 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     // --- 2E. Sculpted Deformable Head, Oral Cavity, Eyes, Eyelids, Ears, Brows & Hair ---
     function headTargetTags(target) {
       const tags = {
-        all: ["head", "eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R", "brow_L", "brow_R", "ear_L", "ear_R", "teethTop", "teethBot", "cavity", "hair"],
-        skin: ["head", "cavity"], eyes: ["eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R"],
+        all: ["head", "eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R", "brow_L", "brow_R", "ear_L", "ear_R", "teethTop", "teethBot", "cavity", "tongue", "hair"],
+        skin: ["head", "cavity", "tongue"], eyes: ["eye_L", "eye_R", "lidTop_L", "lidTop_R", "lidBot_L", "lidBot_R"],
         lidTop: ["lidTop_L", "lidTop_R"], lidBot: ["lidBot_L", "lidBot_R"],
         brows: ["brow_L", "brow_R"], ears: ["ear_L", "ear_R"],
-        hair: ["hair"], teeth: ["teethTop", "teethBot"], cavity: ["cavity"],
+        hair: ["hair"], teeth: ["teethTop", "teethBot"], cavity: ["cavity", "tongue"],
       };
       if (!tags[target]) throw new Error(`Unknown head part: ${target}`);
       return tags[target];
@@ -1745,7 +1814,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const pos = part.geo.attributes.position;
         for (let i = 0; i < pos.count; i++) {
           p.fromBufferAttribute(pos, i);
-          shapePoint(p, part.tag, ["head", "cavity", "brow_L", "brow_R"].includes(part.tag));
+          shapePoint(p, part.tag, ["head", "cavity", "tongue", "brow_L", "brow_R"].includes(part.tag));
           pos.setXYZ(i, p.x, p.y, p.z);
         }
       }
@@ -1755,6 +1824,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
       const boneTags = {
         Head: null, Jaw: "head", UpperLip_C: "head", UpperLip_L: "head", UpperLip_R: "head",
+        TongueBase: "tongue", TongueMid: "tongue", TongueTip: "tongue",
         LowerLip_C: "head", LowerLip_L: "head", LowerLip_R: "head", MouthCorner_L: "head", MouthCorner_R: "head",
         NoseTip: "head", Nostril_L: "head", Nostril_R: "head",
         Eye_L: "eye_L", Eye_R: "eye_R", EyelidTop_L: "lidTop_L", EyelidTop_R: "lidTop_R",
@@ -1763,7 +1833,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       };
       for (const [name, tag] of Object.entries(boneTags)) {
         const point = rig.worldRest.get(name);
-        shapePoint(point, tag, tag === "head" || tag?.startsWith("brow"));
+        shapePoint(point, tag, tag === "head" || tag === "tongue" || tag?.startsWith("brow"));
         for (const stroke of design.strokes) {
           if (stroke.mode === "smooth" || !headTargetTags(stroke.target).includes(tag)) continue;
           const center = new THREE.Vector3(...stroke.center);
@@ -2184,9 +2254,11 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         parts.push({ geo: buildEarGeometry(earRoot, s, `Ear_${side}`, boneIndex), mat: 5, tag: `ear_${side}` });
       }
 
-      parts.push({ geo: buildTeethArc(1.601, 0.112, bHead), mat: 6, tag: "teethTop" });
-      parts.push({ geo: buildTeethArc(1.590, 0.110, bJaw), mat: 6, tag: "teethBot" });
-      parts.push({ geo: buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop), mat: 9, tag: "cavity" });
+      parts.push({ geo: buildTeethArc(true, bHead), mat: 6, tag: "teethTop" });
+      parts.push({ geo: buildTeethArc(false, bJaw), mat: 6, tag: "teethBot" });
+      const oral = buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop, boneIndex);
+      parts.push({ geo: oral.cavity, mat: 9, tag: "cavity" });
+      parts.push({ geo: oral.tongue, mat: 10, tag: "tongue" });
 
       parts.push({ geo: buildHairCap(headCenter, boneIndex), mat: 3, tag: "hair" });
 
@@ -2206,11 +2278,14 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       let halfW = 1e-4;
       for (const p of loop) halfW = Math.max(halfW, Math.abs(p.pos.x - c.x));
       const ringDefs = [
-        { dz: 0, sx: 1, H: 0 },
-        { dz: 0.006, sx: 0.85, H: 0.006 },
-        { dz: 0.018, sx: 0.72, H: 0.010 },
-        { dz: 0.034, sx: 0.6, H: 0.010 },
-        { dz: 0.050, sx: 0.42, H: 0.006 },
+        { dz: 0, W: halfW, H: hh },
+        { dz: 0.020, W: 0.027, H: 0.014 },
+        { dz: 0.034, W: 0.033, H: 0.020 },
+        { dz: 0.048, W: 0.030, H: 0.022 },
+        { dz: 0.066, W: 0.018, H: 0.016 },
+        // Oropharynx: converge and turn downward instead of ending in a flat fan facing the lips.
+        { dz: 0.073, W: 0.011, H: 0.011, dy: -0.003 },
+        { dz: 0.077, W: 0.005, H: 0.005, dy: -0.006 },
       ];
       const rings = ringDefs.map((d, k) => {
         const pts = [], wgts = [];
@@ -2221,11 +2296,12 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
             continue;
           }
           const dy = p.pos.y - c.y;
-          const fc = 1 - smoothstep(0.5, 1.0, Math.abs(p.pos.x - c.x) / halfW); // corners keep the slit's own height (closed, pinched corners)
-          pts.push(new THREE.Vector3(c.x + (p.pos.x - c.x) * d.sx, c.y + dy * (1 + (d.H / hh - 1) * fc), c.z - d.dz - 0.008 * (1 - fc)));
+          const nx = (p.pos.x - c.x) / halfW;
+          const height = Math.sqrt(Math.max(0, 1 - nx * nx));
+          pts.push(new THREE.Vector3(c.x + nx * d.W, mouthY + (d.dy ?? 0) + Math.sign(dy) * height * d.H, c.z - d.dz));
           // Skin weights: blend from the lip-edge weights (ring 0) toward a smooth upper=head / lower=jaw split.
           // jawT varies continuously corner-to-corner so the lower rim moves as one curve with the lower lip.
-          const b = [0, 0.5, 0.85, 1, 1][k];
+          const b = Math.min(1, [0, 0.5, 0.85][k] ?? 1);
           const jawT = THREE.MathUtils.clamp(0.45 - 0.9 * (dy / hh), 0, 1);
           const pr = [];
           for (let j = 0; j < 4; j++) pr.push([p.idx[j], p.wgt[j] * (1 - b)]);
@@ -2234,10 +2310,17 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         }
         return { points: pts, weights: wgts, v: k / (ringDefs.length - 1) };
       });
-      return loftRings(rings, false, true);
+      const geo = loftRings(rings, false, true);
+      const colors = geo.attributes.color;
+      for (let i = 0; i < colors.count; i++) {
+        const depth = Math.min(1, Math.floor(i / (n + 1)) / (rings.length - 1));
+        const shade = THREE.MathUtils.lerp(0.48, 0.065, depth);
+        colors.setXYZ(i, shade, shade * 0.65, shade * 0.70);
+      }
+      return geo;
     }
 
-    function buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop) {
+    function buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop, boneIndex) {
       const parts = [];
 
       const cavRings = [];
@@ -2270,15 +2353,55 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       ORAL_LOFT_VERTS = loftGeo.attributes.position.count;
       parts.push(loftGeo);
 
-      const tongueDefs = [
-        { pos: new THREE.Vector3(0, mouthY - 0.012, 0.082), rx: 0.016, rz: 0.006, weight: normalizeAndPackWeights([[bJaw, 1]]) },
-        { pos: new THREE.Vector3(0, mouthY - 0.009, 0.096), rx: 0.015, rz: 0.0055, weight: normalizeAndPackWeights([[bJaw, 1]]) },
-        { pos: new THREE.Vector3(0, mouthY - 0.008, 0.109), rx: 0.012, rz: 0.0042, weight: normalizeAndPackWeights([[bJaw, 1]]) },
-        { pos: new THREE.Vector3(0, mouthY - 0.0085, 0.118), rx: 0.007, rz: 0.0026, weight: normalizeAndPackWeights([[bJaw, 1]]) },
-      ];
-      parts.push(buildChainTube(tongueDefs, 14, true, true));
-
-      return BufferGeometryUtils.mergeGeometries(parts.map(ensureUniformAttributes), false);
+      parts.push(buildGumArc(true, bHead), buildGumArc(false, bJaw));
+      const tongueRings = [];
+      const joints = ["TongueBase", "TongueMid", "TongueTip"].map((name) => boneIndex.get(name));
+      // Muscular tongue body: root sinks into the oral floor, dorsum sits just below the lower
+      // occlusal plane, lateral margins stay inside the lower arch, tip rests behind the incisors.
+      const z0 = 0.056, z1 = 0.1022, ringCount = 40, segs = 36;
+      for (let r = 0; r <= ringCount; r++) {
+        const t = 1 - Math.pow(1 - r / ringCount, 1.35);
+        const z = z0 + t * (z1 - z0);
+        const tipRound = (k) => Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, t - k) / (1 - k), 2)));
+        const rootT = Math.max(0, 1 - t / 0.2);
+        const halfW = Math.max(0.0002, 0.0172 * (1 - 0.22 * rootT * rootT) * tipRound(0.58));
+        const halfH = Math.max(0.0002, THREE.MathUtils.lerp(0.0068, 0.0034, smoothstep(0.35, 0.92, t)) * tipRound(0.80));
+        const yc = 1.5833 + 0.0008 * smoothstep(0.7, 1, t) - 0.0045 * rootT * rootT;
+        let weight;
+        if (z < 0.066) {
+          const f = smoothstep(z0, 0.066, z);
+          weight = normalizeAndPackWeights([[bJaw, 1 - f], [joints[0], f]]);
+        } else {
+          const blend = THREE.MathUtils.clamp(z < 0.082 ? (z - 0.066) / 0.016 : 1 + (z - 0.082) / 0.013, 0, 2);
+          const a = Math.min(1, Math.floor(blend)), f = blend - a;
+          weight = normalizeAndPackWeights([[joints[a], 1 - f], [joints[a + 1], f]]);
+        }
+        const pts = [], wgts = [];
+        for (let s = 0; s < segs; s++) {
+          const angle = s / segs * Math.PI * 2;
+          const ca = Math.cos(angle), sa = Math.sin(angle);
+          const x = Math.sign(ca) * Math.pow(Math.abs(ca), 0.75) * halfW;
+          // Convex dorsum with a shallow median sulcus; flatter underside resting on the floor.
+          const sulcus = 0.0009 * Math.exp(-Math.pow(x / 0.0026, 2)) * smoothstep(0.1, 0.4, t) * (1 - smoothstep(0.75, 0.97, t));
+          const y = sa >= 0
+            ? yc + halfH * Math.pow(sa, 0.7) - sulcus * sa
+            : yc - halfH * 0.92 * Math.pow(-sa, 0.45);
+          pts.push(new THREE.Vector3(x, y, z));
+          wgts.push(weight);
+        }
+        tongueRings.push({ points: pts, weights: wgts, v: t });
+      }
+      const tongue = loftRings(tongueRings, true, true);
+      const tc = tongue.attributes.color;
+      const tp = tongue.attributes.position;
+      for (let i = 0; i < tc.count; i++) {
+        const s = i % (segs + 1);
+        const underside = i < (ringCount + 1) * (segs + 1) && s > segs / 2 && s < segs;
+        // Darken the root, which sits in the shadowed back of the mouth.
+        const depth = THREE.MathUtils.lerp(0.45, 1, smoothstep(z0, 0.080, tp.getZ(i)));
+        tc.setXYZ(i, (underside ? 0.74 : 1) * depth, (underside ? 0.60 : 0.95) * depth, (underside ? 0.68 : 0.95) * depth);
+      }
+      return { cavity: BufferGeometryUtils.mergeGeometries(parts.map(ensureUniformAttributes), false), tongue };
     }
 
     // --- 2F. Procedural FACS Morph Target Generator ---
@@ -2540,24 +2663,97 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       return buildChainTube(pts, 10, true, true);
     }
 
-    function buildTeethArc(y, zCenter, boneIdx) {
-      const segs = 12;
-      const pts = [];
-      for (let i = 0; i <= segs; i++) {
-        const t = (i / segs - 0.5) * Math.PI * 0.75;
-        pts.push(new THREE.Vector3(Math.sin(t) * 0.016, y, zCenter - 0.016 + Math.cos(t) * 0.018));
+    // Shared arch geometry so crowns and gingiva stay registered. The lower arch sits inside the
+    // upper one (overjet) and its incisal edges rise above the upper edges (overbite / curve of Spee).
+    const DENTAL_ARCH = {
+      upper: { rx: 0.026, rz: 0.035, front: 0.112, edges: [1.5925, 1.5925, 1.5925, 1.5925, 1.5925, 1.5925, 1.5925] },
+      lower: { rx: 0.0235, rz: 0.033, front: 0.1075, edges: [1.5945, 1.5943, 1.5935, 1.5926, 1.5920, 1.5915, 1.5912] },
+    };
+
+    function dentalLayout(upper) {
+      // Seven teeth per quadrant: incisors, canine, two premolars, two molars.
+      const widths = upper ? [0.0080, 0.0064, 0.0072, 0.0065, 0.0064, 0.0092, 0.0087]
+        : [0.0052, 0.0057, 0.0065, 0.0065, 0.0068, 0.0095, 0.0090];
+      const heights = upper ? [0.0095, 0.0085, 0.0102, 0.0075, 0.0070, 0.0065, 0.0060]
+        : [0.0075, 0.0078, 0.0090, 0.0070, 0.0067, 0.0062, 0.0058];
+      const { rx, rz, front, edges } = upper ? DENTAL_ARCH.upper : DENTAL_ARCH.lower;
+      const teeth = [];
+      for (const side of [-1, 1]) {
+        let angle = 0;
+        for (let i = 0; i < widths.length; i++) {
+          const speed = Math.hypot(rx * Math.cos(angle), rz * Math.sin(angle));
+          const span = (widths[i] + 0.00025) / speed;
+          const t = angle + span / 2;
+          teeth.push({ i, side, t, width: widths[i], height: heights[i], edgeY: edges[i],
+            depth: i < 3 ? 0.0055 : i < 5 ? 0.0080 : 0.010,
+            x: side * rx * Math.sin(t), z: front - rz * (1 - Math.cos(t)),
+            rotation: side * Math.atan2(rz * Math.sin(t), rx * Math.cos(t)) });
+          angle += span;
+        }
       }
-      const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, 0.0046, 8, false);
-      const count = tube.attributes.position.count;
-      const idx = new Uint16Array(count * 4);
-      const wgt = new Float32Array(count * 4);
-      for (let i = 0; i < count; i++) {
-        idx[i * 4] = boneIdx;
-        wgt[i * 4] = 1;
+      return teeth;
+    }
+
+    function buildTeethArc(upper, boneIdx) {
+      const parts = [], direction = upper ? 1 : -1;
+      const weight = normalizeAndPackWeights([[boneIdx, 1]]);
+      for (const tooth of dentalLayout(upper)) {
+        const rings = [];
+        const edgeY = tooth.edgeY;
+        for (let r = 0; r <= 12; r++) {
+          const v = r / 12;
+          const profile = r === 0 ? 0.67 : r === 12 ? 0.72 : 0.94 + 0.06 * Math.sin(Math.PI * v);
+          const pts = [], wgts = [];
+          for (let s = 0; s < 32; s++) {
+            const a = s / 32 * Math.PI * 2;
+            const rounded = (n) => Math.sign(n) * Math.pow(Math.abs(n), 0.55);
+            const lx = rounded(Math.cos(a)) * tooth.width * 0.48 * profile;
+            const lz = -rounded(Math.sin(a)) * tooth.depth * 0.5 * profile * (tooth.i < 3 ? 0.55 + v * 0.45 : 1);
+            // Canine: single pointed cusp. Premolars: buccal + lingual cusps. Molars: four corner cusps.
+            const cusp = tooth.i === 2 ? (1 - Math.abs(lx) / (tooth.width * 0.5)) * 0.0016
+              : tooth.i >= 3 ? (0.5 - 0.5 * Math.cos(a * (tooth.i < 5 ? 2 : 4))) * 0.0010 : 0;
+            const y = edgeY + direction * (v * tooth.height - cusp * Math.pow(1 - v, 4));
+            pts.push(new THREE.Vector3(
+              tooth.x + lx * Math.cos(tooth.rotation) + lz * Math.sin(tooth.rotation),
+              y, tooth.z - lx * Math.sin(tooth.rotation) + lz * Math.cos(tooth.rotation)));
+            wgts.push(weight);
+          }
+          rings.push({ points: pts, weights: wgts, v });
+        }
+        // Reverse lower rings to retain outward-facing winding on both arches.
+        const geo = loftRings(upper ? rings : rings.reverse(), true, true);
+        const col = geo.attributes.color;
+        const shade = 1 - tooth.i * 0.009;
+        for (let i = 0; i < col.count; i++) col.setXYZ(i, shade, shade, shade);
+        parts.push(geo);
       }
-      tube.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(idx, 4));
-      tube.setAttribute("skinWeight", new THREE.Float32BufferAttribute(wgt, 4));
-      return ensureUniformAttributes(tube);
+      return BufferGeometryUtils.mergeGeometries(parts.map(ensureUniformAttributes), false);
+    }
+
+    function buildGumArc(upper, boneIdx) {
+      const { rx, rz, front } = upper ? DENTAL_ARCH.upper : DENTAL_ARCH.lower;
+      const dir = upper ? 1 : -1, radius = 0.0040;
+      // Gum line tracks each crown's cervical margin, overlapping it by ~1.3 mm.
+      const quadrant = dentalLayout(upper).filter((tooth) => tooth.side === 1);
+      const cervicalY = (t) => {
+        const a = Math.abs(t);
+        let k = quadrant.findIndex((tooth) => tooth.t > a);
+        if (k === -1) k = quadrant.length;
+        const p = quadrant[Math.max(0, k - 1)], n = quadrant[Math.min(quadrant.length - 1, k)];
+        const f = p === n ? 0 : THREE.MathUtils.clamp((a - p.t) / (n.t - p.t), 0, 1);
+        return THREE.MathUtils.lerp(p.edgeY + dir * p.height, n.edgeY + dir * n.height, f);
+      };
+      const defs = [];
+      for (let i = 0; i <= 64; i++) {
+        const t = (i / 64 - 0.5) * Math.PI * 1.15;
+        defs.push({ pos: new THREE.Vector3(rx * Math.sin(t), cervicalY(t) + dir * (radius - 0.0013), front - rz * (1 - Math.cos(t))),
+          rx: radius, rz: radius, weight: normalizeAndPackWeights([[boneIdx, 1]]) });
+      }
+      const geo = buildChainTube(defs, 16, true, true);
+      const colors = geo.attributes.color;
+      // Attached gingiva reads coral-pink, lighter than the surrounding mucosa.
+      for (let i = 0; i < colors.count; i++) colors.setXYZ(i, 1.12, 1.30, 1.18);
+      return geo;
     }
 
     function buildHairCap(headCenter, boneIndex) {
@@ -3264,6 +3460,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
       const faceSliders = {
         jaw: 0, smile: 0, pucker: 0, browUp: 0, browDown: 0, cheek: 0,
+        tongueOut: 0, tongueCurl: 0,
         upperLip: 0, lowerLip: 0, lidTop: 0, lidBot: 0, eyeX: 0, eyeY: 0, nose: 0, ears: 0,
       };
 
@@ -3451,6 +3648,19 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         };
 
         if (faceSliders.jaw !== 0) addRot("Jaw", faceSliders.jaw * 0.42, 0, 0);
+        const tongueOut = THREE.MathUtils.clamp(faceSliders.tongueOut, 0, 1);
+        const tongueCurl = THREE.MathUtils.clamp(faceSliders.tongueCurl, -1, 1);
+        if (tongueOut > 0 || tongueCurl !== 0) {
+          const jaw = bm.get("Jaw");
+          const opening = new THREE.Euler().setFromQuaternion(jaw.quaternion, "XYZ").x;
+          const clearance = 0.26 * tongueOut;
+          if (opening < clearance) addRot("Jaw", clearance - opening, 0, 0);
+          addRot("TongueBase", -0.30 * tongueOut, 0, 0);
+          addPos("TongueMid", 0, 0.003 * tongueOut, 0.020 * tongueOut);
+          addPos("TongueTip", 0, 0, 0.028 * tongueOut);
+          addRot("TongueMid", -0.30 * tongueCurl, 0, 0);
+          addRot("TongueTip", -0.50 * tongueCurl, 0, 0);
+        }
         if (faceSliders.smile !== 0) {
           addMorph("mouthSmile_L", faceSliders.smile);
           addMorph("mouthSmile_R", faceSliders.smile);
@@ -3841,7 +4051,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
     document.querySelectorAll("[data-outfit]").forEach((button) => {
       button.addEventListener("click", () => changeClothing(() => character.setOutfit(outfits[button.dataset.outfit])));
     });
-    const materialNames = ["Body Skin", "Tops / Sleeves", "Shorts / Trousers", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Foot Wraps", "Clothing Trim (reserved)", "Mouth / Tongue"];
+    const materialNames = ["Body Skin", "Tops / Sleeves", "Shorts / Trousers", "Hair / Brows", "Eyeballs", "Head Skin", "Teeth", "Foot Wraps", "Clothing Trim (reserved)", "Mouth / Gums", "Tongue"];
     const textureKeys = ["skin", "shirt", "shorts", "hair", null, "skin", null, null, null, null];
     const surfaceDefs = [
       ["roughness", "Roughness", 0, 1, 0.01],
@@ -4626,6 +4836,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
     const sliderDefs = [
       ["slJaw", "valJaw", "jaw"],
+      ["slTongueOut", "valTongueOut", "tongueOut"],
+      ["slTongueCurl", "valTongueCurl", "tongueCurl"],
       ["slSmile", "valSmile", "smile"],
       ["slPucker", "valPucker", "pucker"],
       ["slBrowUp", "valBrowUp", "browUp"],
