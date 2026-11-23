@@ -215,6 +215,7 @@
               <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Eye Gaze Y</span><span id="valEyeY">0.00</span></div>
               <input id="slEyeY" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
             </label>
+            <p class="col-span-2 text-[11px] leading-relaxed text-slate-400">Gaze also turns and tilts the head. Use Face Close-Up and orbit to inspect the jaw and neck from the side, back, or below.</p>
           </div>
           <label class="block">
             <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Nose Scrunch &amp; Flare</span><span id="valNose">0.00</span></div>
@@ -1420,9 +1421,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         { y: 1.33, rx: 0.194, rz: 0.119, cz: 0.005 },
         { y: 1.39, rx: 0.201, rz: 0.108, cz: 0 },
         { y: 1.45, rx: 0.165, rz: 0.085, cz: -0.003 },
-        { y: 1.50, rx: 0.064, rz: 0.061, cz: 0 },
-        { y: 1.55, rx: 0.055, rz: 0.055, cz: 0.003 },
-        { y: 1.64, rx: 0.058, rz: 0.060, cz: 0.005 },
+        { y: 1.50, rx: 0.064, rz: 0.057, cz: -0.004 },
+        { y: 1.515, rx: 0.055, rz: 0.052, cz: -0.006 },
       ];
       const profile = (y) => {
         for (let i = 0; i < table.length - 1; i++) {
@@ -1444,7 +1444,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         return table[table.length - 1];
       };
       const baseYs = [0.89, 0.91, 0.94, 0.97, 1.00, 1.04, 1.08, 1.12, 1.16, 1.20,
-        1.25, 1.29, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.525, 1.55, 1.585, 1.615, 1.64];
+        1.25, 1.29, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.5075, 1.515];
       const ys = baseYs.flatMap((y, i) => {
         if (y >= 1.50 || (y >= 1.33 && y < 1.45)) return [y];
         const dy = baseYs[i + 1] - y;
@@ -1462,13 +1462,16 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         return (r ? columns : coarseToFine.map((j) => columns[j])).map((j) => {
           const a = j / coarseSegs * Math.PI * 2;
           const v = new THREE.Vector3(-Math.cos(a) * p.rx, y, p.cz + Math.sin(a) * p.rz);
-          // The hidden neck core must stay behind the oral lumen, including an open jaw.
-          const oralClearance = smoothstep(1.53, 1.575, y)
-            * smoothstep(0.050, 0.030, Math.abs(v.x)) * smoothstep(0, 0.045, v.z);
-          v.z = THREE.MathUtils.lerp(v.z, 0.012, oralClearance);
           return addVertex(v, torsoWeight(v));
         });
       });
+      // Start the cervical loop at the nape, in the same angular order as the skull.
+      const nape = columns.indexOf(coarseSegs * 0.75);
+      const atNape = (ring) => [...ring.slice(nape), ...ring.slice(0, nape)];
+      interfaces.neck = atNape(torso.at(-1));
+      interfaces.neckBelow = atNape(torso.at(-2));
+      const neckAngles = atNape(columns).map((j) =>
+        ((j - columns[nape] + coarseSegs) % coarseSegs) / coarseSegs * Math.PI * 2 - Math.PI);
       const wrap = (j) => (j + segs) % segs;
       const shoulderLo = ys.indexOf(1.33), shoulderHi = ys.indexOf(1.45);
       // Stitch the dense torso to the original pelvis ring without changing its leg loops.
@@ -1636,6 +1639,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       geo.userData.faceBands = faceBands;
       geo.userData.interfaces = Object.fromEntries(Object.entries(interfaces).map(([name, loop]) =>
         [name, loop.map((i) => remap.get(i))]));
+      geo.userData.neckAngles = neckAngles;
       const parts = [{ geo, mat: 0, tag: "body" }, ...handParts];
       for (const [side, s] of [["L", 1], ["R", -1]]) {
         const x = rig.worldRest.get(`Foot_${side}`).x;
@@ -2104,13 +2108,15 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const pos = part.geo.attributes.position;
         const before = stroke.mode === "smooth" ? new Float32Array(pos.array) : null;
         const topology = before ? headSculptTopology(part.geo) : null;
+        const attachment = part.geo.userData.neckAttachment;
         for (let i = 0; i < pos.count; i++) {
           p.fromBufferAttribute(pos, i);
           const d1 = p.distanceToSquared(center);
           const d2 = stroke.mirror ? p.distanceToSquared(mirrored) : Infinity;
           const distance = Math.min(d1, d2);
           if (distance >= stroke.radius * stroke.radius) continue;
-          const weight = Math.pow(1 - distance / (stroke.radius * stroke.radius), 2);
+          const weight = Math.pow(1 - distance / (stroke.radius * stroke.radius), 2) * (attachment?.[i] ?? 1);
+          if (!weight) continue;
           if (before) {
             const neighbors = topology.neighbors.get(topology.owner[i]);
             if (!neighbors.size) continue;
@@ -2171,11 +2177,15 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const hasEdits = Object.keys(design.transforms).length || Object.keys(design.features).length || design.strokes.length;
       if (!hasEdits) return;
       const p = new THREE.Vector3();
+      const rest = new THREE.Vector3();
       for (const part of parts) {
         const pos = part.geo.attributes.position;
+        const attachment = part.geo.userData.neckAttachment;
         for (let i = 0; i < pos.count; i++) {
           p.fromBufferAttribute(pos, i);
+          rest.copy(p);
           shapePoint(p, part.tag, ["head", "cavity", "tongue", "brow_L", "brow_R"].includes(part.tag));
+          if (attachment) p.lerpVectors(rest, p, attachment[i]);
           pos.setXYZ(i, p.x, p.y, p.z);
         }
       }
@@ -2245,11 +2255,13 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       };
 
       // Keep the skull grid, concentrating sub-millimeter samples on the facial contours.
+      const baseTheta = Math.acos((1.583 - headCenter.y) / 0.120);
       const thetaSamples = Array.from({ length: 105 }, (_, r) => {
         const v = r / 104;
         return THREE.MathUtils.clamp((v - 0.055 * Math.sin(v * Math.PI * 2)) * Math.PI, 0.001, Math.PI - 0.001);
-      });
-      for (let y = 1.578; y <= 1.678; y += 0.0005) {
+      }).filter((theta) => theta < baseTheta);
+      thetaSamples.push(baseTheta);
+      for (let y = 1.584; y <= 1.678; y += 0.0005) {
         thetaSamples.push(Math.acos((y - headCenter.y) / 0.120));
       }
       const phiSamples = Array.from({ length: 113 }, (_, c) => (c / 112 - 0.5) * Math.PI * 2);
@@ -2257,8 +2269,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const sortedSamples = (samples) => samples.sort((a, b) => a - b)
         .filter((value, i, sorted) => i === 0 || value - sorted[i - 1] > 0.0001);
       const thetas = sortedSamples(thetaSamples);
+      const jawRows = 28;
       const phis = sortedSamples(phiSamples);
-      const latSegs = thetas.length - 1;
+      const latSegs = thetas.length - 1 + jawRows;
       const lonSegs = phis.length - 1;
       const stride = lonSegs + 1;
       const positions = [];
@@ -2268,6 +2281,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const skinIdx = [];
       const skinWgt = [];
       const indices = [];
+      const neckAttachment = [];
 
       const bHead = boneIndex.get("Head");
       const bNeck = boneIndex.get("Neck");
@@ -2287,16 +2301,22 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const bNosR = boneIndex.get("Nostril_R");
 
       for (let r = 0; r <= latSegs; r++) {
-        const theta = thetas[r];
-        const v = theta / Math.PI;
-        const sinT = Math.sin(theta);
-        const cosT = Math.cos(theta);
-
         for (let c = 0; c <= lonSegs; c++) {
           const phi = phis[c];
           const u = phi / (Math.PI * 2) + 0.5;
           const sinP = Math.sin(phi);
           const cosP = Math.cos(phi);
+          // Retain the chin, then sweep the cut up behind the jaw into the nape.
+          const cutY = 1.575 - 0.026 * Math.pow(Math.max(0, cosP), 2.4);
+          const cutTheta = Math.acos((cutY - headCenter.y) / 0.120);
+          const theta = r < thetas.length ? thetas[r]
+            : THREE.MathUtils.lerp(baseTheta, cutTheta, (r - thetas.length + 1) / jawRows);
+          const v = theta / Math.PI;
+          const sinT = Math.sin(theta);
+          const cosT = Math.cos(theta);
+          const aboveCut = headCenter.y + 0.120 * cosT - cutY;
+          // Keep the first two rings fixed so sculpting cannot break the join or its tangent.
+          neckAttachment.push(r >= latSegs - 1 ? 0 : smoothstep(0, 0.013, aboveCut));
 
           const rx = 0.088;
           const ry = 0.120;
@@ -2459,8 +2479,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           const pairs = [];
           const isFront = smoothstep(-0.02, 0.35, cosP);
 
-          const wNeck = smoothstep(1.568, 1.540, fy) * smoothstep(0.06, -0.02, fz);
-          const jawZone = smoothstep(mouthY + 0.001, mouthY - 0.006, fy) * smoothstep(0.005, 0.065, fz) * isFront;
+          const wNeck = (1 - smoothstep(0, 0.040, aboveCut)) * (0.24 - 0.16 * isFront);
+          const jawFollow = THREE.MathUtils.lerp(0.27, 1, smoothstep(1.547, 1.584, fy));
+          const jawZone = smoothstep(mouthY + 0.001, mouthY - 0.006, fy)
+            * smoothstep(0.005, 0.065, fz) * isFront * jawFollow;
 
           let wULC = 0, wULL = 0, wULR = 0;
           if (fy >= mouthY - 0.001 && isFront > 0.1) {
@@ -2534,6 +2556,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const headGeo = buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, indices);
       headGeo.setAttribute("faceSurface", new THREE.Float32BufferAttribute(faceSurface, 3));
       weldSeamNormals(headGeo, latSegs + 1, lonSegs);
+      headGeo.userData.neckAttachment = neckAttachment;
+      headGeo.userData.neckAngles = phis.slice(0, -1);
+      headGeo.userData.neckStart = latSegs * stride;
+      headGeo.userData.skullStride = stride;
 
       // Trace the real boundary loop of the mouth opening so the inner mouth shares the lips' exact vertices
       const edgeCount = new Map();
@@ -2572,7 +2598,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       }));
       headGeo.userData.mouthLoopIndices = loopIdx;
 
-      const parts = [{ geo: headGeo, mat: 5, tag: "head" }];
+      const parts = [{ geo: headGeo, mat: 0, tag: "head" }];
 
       const eyeRadius = 0.0130;
       for (const [side, s] of [["L", 1], ["R", -1]]) {
@@ -2881,7 +2907,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
           if (dx !== 0 || dy !== 0 || dz !== 0) {
             const scale = vi >= cavMin + lipRimCount && vi - cavMin < ORAL_LOFT_VERTS ? cavityScale : headScale;
-            dx *= scale.x; dy *= scale.y; dz *= scale.z;
+            const faceFade = smoothstep(1.575, 1.585, y);
+            dx *= scale.x * faceFade; dy *= scale.y * faceFade; dz *= scale.z * faceFade;
             pArr[vi * 3] = dx;
             pArr[vi * 3 + 1] = dy;
             pArr[vi * 3 + 2] = dz;
@@ -3580,13 +3607,141 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       fore.updateMatrixWorld(true);
     }
 
-    function mergeCharacterParts(parts) {
-      const merged = BufferGeometryUtils.mergeGeometries(parts.map((part) => ensureUniformAttributes(part.geo)), true);
+    function buildCervicalSurface(body, head, rig, headOffset, neckOffset) {
+      const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
+      const { neck: base, neckBelow: below } = body.userData.interfaces;
+      const baseAngles = body.userData.neckAngles;
+      const { neckAngles: angles, neckStart: top, skullStride: stride } = head.userData;
+      const getPoint = (geo, i) => new THREE.Vector3().fromBufferAttribute(geo.attributes.position, i);
+      const packedAt = (geo, i) => Array.from({ length: 4 }, (_, k) =>
+        [geo.attributes.skinIndex.array[i * 4 + k], geo.attributes.skinWeight.array[i * 4 + k]]);
+      const jawBone = rig.boneIndex.get("Jaw");
+      const headBone = rig.boneIndex.get("Head");
+      const rings = 12;
+      const band = (a, b) => {
+        for (let i = 0; i < a.length; i++) {
+          const j = (i + 1) % a.length;
+          indices.push(a[i], a[j], b[i], a[j], b[j], b[i]);
+        }
+      };
+      const lower = angles.map((phi, i) => {
+        const p = getPoint(head, top + i), q = getPoint(head, top - stride + i);
+        const next = baseAngles.findIndex((a) => a > phi + 1e-8);
+        const j = next === -1 ? base.length - 1 : next - 1;
+        const k = (j + 1) % base.length;
+        const f = THREE.MathUtils.clamp((phi - baseAngles[j]) / ((baseAngles[k] + (k ? 0 : 2 * Math.PI)) - baseAngles[j]), 0, 1);
+        const b = getPoint(body, base[j]).lerp(getPoint(body, base[k]), f);
+        const c = getPoint(body, below[j]).lerp(getPoint(body, below[k]), f);
+        const height = p.y - b.y;
+        const tangent = (end, neighbor) => end.clone().sub(neighbor)
+          .multiplyScalar(height / (end.y - neighbor.y));
+        return { p, b, inSlope: tangent(b, c), outSlope: tangent(p, q),
+          baseWeights: packedAt(body, base[j]), topWeights: packedAt(head, top + i) };
+      });
+      let previous;
+      for (let r = 1; r < rings; r++) {
+        const t = r / rings, blend = t * t * (3 - 2 * t);
+        const current = angles.map((phi, i) => {
+          const { p, b, inSlope, outSlope, baseWeights, topWeights } = lower[i];
+          const v = b.clone().lerp(p, blend)
+            .addScaledVector(inSlope, t * (1 - t) ** 2)
+            .addScaledVector(outSlope, -(1 - t) * t ** 2);
+          const envelope = 16 * t ** 2 * (1 - t) ** 2;
+          const scm = 0.0028 * Math.exp(-(((Math.abs(phi) - (0.52 + 0.87 * t)) / 0.24) ** 2));
+          const larynx = 0.0022 * Math.exp(-((phi / 0.26) ** 2) - (((t - 0.35) / 0.26) ** 2));
+          const nape = 0.0015 * Math.exp(-(((Math.abs(phi) - 2.72) / 0.24) ** 2));
+          const relief = (scm + larynx + nape) * envelope;
+          v.x += Math.sin(phi) * relief;
+          v.z += Math.cos(phi) * relief;
+          const pairs = baseWeights.map(([bone, weight]) => [bone, weight * (1 - blend)]);
+          for (const [bone, weight] of topWeights) {
+            // The jaw pulls on the submental skin, not the whole throat.
+            const w = weight * blend;
+            const jaw = bone === jawBone ? w * t : w;
+            pairs.push([bone, jaw], [headBone, w - jaw]);
+          }
+          const packed = normalizeAndPackWeights(pairs);
+          const index = neckOffset + positions.length / 3;
+          positions.push(v.x, v.y, v.z);
+          uvs.push(v.x * 2 + 0.5, v.y / 1.78 + v.z);
+          colors.push(1, 1, 1);
+          skinIdx.push(...packed.indices);
+          skinWgt.push(...packed.weights);
+          return index;
+        });
+        if (previous) {
+          band(previous, current);
+        } else {
+          // Zipper the coarse body ring to the denser face grid without T-junctions.
+          let i = 0, j = 0;
+          while (i < base.length || j < current.length) {
+            const b = base[i % base.length], n = current[j % current.length];
+            const nextBase = i < base.length ? baseAngles[i + 1] ?? Math.PI : Infinity;
+            const nextNeck = j < current.length ? angles[j + 1] ?? Math.PI : Infinity;
+            if (nextBase <= nextNeck + 1e-8) {
+              indices.push(b, base[++i % base.length], n);
+            } else {
+              indices.push(b, current[(j + 1) % current.length], n);
+              j++;
+            }
+          }
+        }
+        previous = current;
+      }
+      const headRim = angles.map((_, i) => headOffset + top + i);
+      band(previous, headRim);
+      return {
+        geo: buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, []),
+        indices, headRim, bodyRim: base,
+      };
+    }
+
+    function mergeCharacterParts(parts, rig) {
+      const headIndex = parts.findIndex((part) => part.tag === "head");
+      const head = parts[headIndex].geo;
+      const count = (sum, part) => sum + part.geo.attributes.position.count;
+      const headOffset = parts.slice(0, headIndex).reduce(count, 0);
+      const neckOffset = parts.reduce(count, 0);
+      const neck = buildCervicalSurface(parts[0].geo, head, rig, headOffset, neckOffset);
+      const merged = BufferGeometryUtils.mergeGeometries([...parts.map((part) => part.geo), neck.geo]
+        .map(ensureUniformAttributes), true);
       if (!merged) throw new Error("Could not merge procedural character geometry.");
       parts.forEach((part, i) => { merged.groups[i].materialIndex = part.mat; });
-      const loop = parts.find((part) => part.tag === "head").geo.userData.mouthLoopIndices;
+      const neckGroup = merged.groups.at(-1);
+      neckGroup.count = neck.indices.length;
+      neckGroup.materialIndex = parts[headIndex].mat;
+      const index = new Uint32Array(neckGroup.start + neckGroup.count);
+      index.set(merged.index.array);
+      index.set(neck.indices, neckGroup.start);
+      // Skin uses triplanar mapping, so the skull's old UV seam can share indices too.
+      const stride = head.userData.skullStride;
+      const group = merged.groups[headIndex];
+      for (let i = group.start; i < group.start + group.count; i++) {
+        if ((index[i] - headOffset) % stride === stride - 1) index[i] -= stride - 1;
+      }
+      merged.setIndex(new THREE.BufferAttribute(index, 1));
+      const normals = merged.attributes.normal;
+      merged.deleteAttribute("normal");
+      merged.computeVertexNormals();
+      const welded = merged.attributes.normal;
+      const setNormal = (i) => normals.setXYZ(i, welded.getX(i), welded.getY(i), welded.getZ(i));
+      for (let i = headOffset; i < headOffset + head.attributes.position.count; i += stride) {
+        setNormal(i);
+      }
+      const joins = [...neck.bodyRim, ...neck.headRim];
+      joins.forEach(setNormal);
+      for (let i = neckOffset; i < normals.count; i++) setNormal(i);
+      merged.setAttribute("normal", normals);
+      merged.userData.neckJoinNormals = joins.map((i) => [i, normals.getX(i), normals.getY(i), normals.getZ(i)]);
+      const loop = head.userData.mouthLoopIndices;
       merged.userData.mouthRimCount = loop.length >= 8 ? loop.length + 1 : 0;
       return merged;
+    }
+
+    function restoreNeckJoinNormals(geometry) {
+      for (const [i, x, y, z] of geometry.userData.neckJoinNormals) {
+        geometry.attributes.normal.setXYZ(i, x, y, z);
+      }
     }
 
     const CLOTHING_ITEMS = {
@@ -3673,10 +3828,10 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       sculptTorso(bodyGeo, neutralBody, torsoDetails);
       const referenceRig = createHumanoidSkeleton();
       const referenceHead = buildHeadAndFaceParts(referenceRig, { transforms: {}, features: {}, strokes: [] });
-      const referenceGeometry = mergeCharacterParts([...bodyParts, ...referenceHead]);
+      const referenceGeometry = mergeCharacterParts([...bodyParts, ...referenceHead], referenceRig);
       const headParts = buildHeadAndFaceParts(rig, options.headDesign);
       const rawParts = [...bodyParts, ...headParts];
-      const merged = mergeCharacterParts(rawParts);
+      const merged = mergeCharacterParts(rawParts, rig);
       const headGroupIdx = rawParts.findIndex((p) => p.tag === "head");
       const cavGroupIdx = rawParts.findIndex((p) => p.tag === "cavity");
 
@@ -3706,6 +3861,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
           geometry.attributes[name].array.set(bodyGeo.attributes[name].array);
           geometry.attributes[name].needsUpdate = true;
         }
+        restoreNeckJoinNormals(geometry);
         geometry.boundingBox = geometry.boundingSphere = null;
       }
       function applyTorsoDetails(next) {
@@ -3848,7 +4004,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       function createHeadPreview(design) {
         const previewRig = createHumanoidSkeleton();
         const parts = buildHeadAndFaceParts(previewRig, design);
-        const geometry = mergeCharacterParts([...bodyParts, ...parts]);
+        const geometry = mergeCharacterParts([...bodyParts, ...parts], previewRig);
         let offset = bodyParts.reduce((sum, part) => sum + part.geo.attributes.position.count, 0);
         const ranges = parts.map((part, i) => {
           const group = geometry.groups[bodyParts.length + i];
@@ -4213,8 +4369,8 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
 
         gazeState.currentX = THREE.MathUtils.damp(gazeState.currentX, gazeState.targetX, 28, dt);
         gazeState.currentY = THREE.MathUtils.damp(gazeState.currentY, gazeState.targetY, 28, dt);
-        const desiredHeadYaw = (gazeState.targetX + faceSliders.eyeX) * 0.16;
-        const desiredHeadPitch = -(gazeState.targetY + faceSliders.eyeY) * 0.11;
+        const desiredHeadYaw = gazeState.targetX * 0.16 + faceSliders.eyeX * 0.60;
+        const desiredHeadPitch = -(gazeState.targetY * 0.11 + faceSliders.eyeY * 0.36);
         gazeState.headYaw = THREE.MathUtils.damp(gazeState.headYaw, desiredHeadYaw, 4.5, dt);
         gazeState.headPitch = THREE.MathUtils.damp(gazeState.headPitch, desiredHeadPitch, 4.5, dt);
 
@@ -4994,6 +5150,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         pos.array.set(range.part.geo.attributes.position.array, range.offset * 3);
         normals.array.set(range.part.geo.attributes.normal.array, range.offset * 3);
       }
+      restoreNeckJoinNormals(headPreview.geometry);
       pos.needsUpdate = normals.needsUpdate = true;
       headPreview.geometry.computeBoundingSphere();
       headPreview.geometry.computeBoundingBox();
