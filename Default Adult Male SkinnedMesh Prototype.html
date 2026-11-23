@@ -1433,9 +1433,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const hip = (1 - THREE.MathUtils.smoothstep(p.y, 0.89, 1.015))
           * THREE.MathUtils.smoothstep(Math.abs(p.x), 0.015, 0.12) * 0.42;
         const base = spineWeight(p.y);
-        return pk([...base.indices.map((i, k) => [i, base.weights[k] * (1 - shoulder * 0.65 - hip)]),
+        return pk([...base.indices.map((i, k) => [i, base.weights[k] * (1 - shoulder * 0.75 - hip)]),
           [bi(`Clavicle_${side}`), shoulder * 0.30],
-          [bi(`Deltoid_${side}`), shoulder * 0.35], [bi(`Thigh_${side}`), hip]]);
+          [bi(`Deltoid_${side}`), shoulder * 0.45], [bi(`Thigh_${side}`), hip]]);
       };
       const table = [
         // Taper from the thigh junction into the waist without a lateral hip shelf.
@@ -1471,15 +1471,15 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         return table[table.length - 1];
       };
       const baseYs = [0.89, 0.91, 0.94, 0.97, 1.00, 1.04, 1.08, 1.12, 1.16, 1.20,
-        1.25, 1.29, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.5075, 1.515];
+        1.25, 1.30, 1.33, 1.36, 1.39, 1.42, 1.45, 1.475, 1.50, 1.5075, 1.515];
       const ys = baseYs.flatMap((y, i) => {
-        if (y >= 1.50 || (y >= 1.33 && y < 1.45)) return [y];
+        if (y >= 1.50 || (y >= 1.30 && y < 1.45)) return [y];
         const dy = baseYs[i + 1] - y;
         const steps = Math.ceil(dy / 0.012);
         return Array.from({ length: steps }, (_, j) => y + dy * j / steps);
       });
       const coarseSegs = 40;
-      const halfHole = 2;
+      const halfHole = 3;
       const inShoulder = (j) => (j + halfHole) % (coarseSegs / 2) < halfHole * 2;
       const columns = Array.from({ length: coarseSegs }, (_, j) => inShoulder(j) ? [j] : [j, j + 0.5]).flat();
       const coarseToFine = Array.from({ length: coarseSegs }, (_, j) => columns.indexOf(j));
@@ -1500,7 +1500,7 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
       const neckAngles = atNape(columns).map((j) =>
         ((j - columns[nape] + coarseSegs) % coarseSegs) / coarseSegs * Math.PI * 2 - Math.PI);
       const wrap = (j) => (j + segs) % segs;
-      const shoulderLo = ys.indexOf(1.33), shoulderHi = ys.indexOf(1.45);
+      const shoulderLo = ys.indexOf(1.30), shoulderHi = ys.indexOf(1.45);
       // Stitch the dense torso to the original pelvis ring without changing its leg loops.
       for (let j = 0; j < coarseSegs; j++) {
         const k = (j + 1) % coarseSegs;
@@ -1563,12 +1563,55 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         }
         return previous;
       };
+      // The cut-out starts as a vertical rectangle on the torso wall, but the arm leaves ~38° below
+      // horizontal; left as-is the junction pinches and rings the arm with a ridge. Re-seat the rim
+      // on a tilted ellipse (armpit edge on the chest wall, top raised and pushed out to cap the
+      // humeral head like the deltoid) and spread that offset into the surrounding torso.
+      const shoulderSocket = { bottom: [0.183, 1.300], top: [0.238, 1.452], depth: 0.061, inset: 0.020, reach: 0.075 };
+      const seatShoulder = (opening, s, z0) => {
+        const setPoint = (i, v) => { positions[i * 3] = v.x; positions[i * 3 + 1] = v.y; positions[i * 3 + 2] = v.z; };
+        const { bottom, top, depth, inset, reach } = shoulderSocket;
+        const lo = new THREE.Vector3(s * bottom[0], bottom[1], z0), hi = new THREE.Vector3(s * top[0], top[1], z0);
+        const center = lo.clone().add(hi).multiplyScalar(0.5);
+        const up = hi.clone().sub(lo), height = up.length() / 2;
+        up.normalize();
+        const rim = opening.map(point);
+        const centroid = rim.reduce((a, v) => a.add(v), new THREE.Vector3()).divideScalar(rim.length);
+        const angleOf = (v) => Math.atan2(v.z - centroid.z, v.y - centroid.y);
+        const winding = Math.sin(angleOf(rim[1]) - angleOf(rim[0])) >= 0 ? 1 : -1;
+        const targets = rim.map((_, k) => {
+          const a = angleOf(rim[0]) + winding * k / rim.length * Math.PI * 2;
+          // Front and back of the cap curve medially around the ribcage instead of a flat plate.
+          return center.clone().addScaledVector(up, Math.cos(a) * height)
+            .add(new THREE.Vector3(-s * inset * Math.sin(a) ** 2, 0, Math.sin(a) * depth));
+        });
+        const offsets = targets.map((t, k) => t.clone().sub(rim[k]));
+        const rimSet = new Set(opening);
+        for (const row of torso.slice(0, -3)) for (const i of row) {
+          if (rimSet.has(i)) continue;
+          const p = point(i);
+          if (p.x * s < 0.06) continue;
+          let nearest = Infinity, total = 0;
+          const shift = new THREE.Vector3();
+          rim.forEach((v, k) => {
+            const d2 = p.distanceToSquared(v);
+            nearest = Math.min(nearest, d2);
+            const w = 1 / (d2 * d2 + 1e-12);
+            shift.addScaledVector(offsets[k], w);
+            total += w;
+          });
+          const falloff = 1 - THREE.MathUtils.smoothstep(Math.sqrt(nearest), 0, reach);
+          if (falloff > 0) setPoint(i, p.addScaledVector(shift, falloff / total));
+        }
+        opening.forEach((i, k) => setPoint(i, targets[k]));
+      };
       for (const [side, s, column] of [["L", 1, coarseToFine[20]], ["R", -1, 0]]) {
         const opening = [];
         for (let j = column - halfHole; j < column + halfHole; j++) opening.push(torso[shoulderLo][wrap(j)]);
         for (let r = shoulderLo; r < shoulderHi; r++) opening.push(torso[r][wrap(column + halfHole)]);
         for (let j = column + halfHole; j > column - halfHole; j--) opening.push(torso[shoulderHi][wrap(j)]);
         for (let r = shoulderHi; r > shoulderLo; r--) opening.push(torso[r][wrap(column - halfHole)]);
+        seatShoulder(opening, s, rig.worldRest.get(`UpperArm_${side}`).z);
         interfaces[`arm_${side}`] = opening;
         const upper = rig.worldRest.get(`UpperArm_${side}`);
         const elbow = rig.worldRest.get(`Forearm_${side}`);
@@ -1576,8 +1619,9 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
         const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
         const defs = [
-          [at(upper, elbow, 0.20), 0.059, 0.059, w("Deltoid", "UpperArm", 0.55)],
-          [at(upper, elbow, 0.35), 0.057, 0.056, w("Deltoid", "UpperArm", 1)],
+          // Ease from the torso rim into the humerus over two rings so the arm root doesn't fold.
+          [at(upper, elbow, 0.20), 0.060, 0.059, w("Deltoid", "UpperArm", 0.30)],
+          [at(upper, elbow, 0.35), 0.057, 0.056, w("Deltoid", "UpperArm", 0.72)],
           [at(upper, elbow, 0.50), 0.052, 0.051, w("UpperArm", "Forearm", 0)],
           [at(upper, elbow, 0.68), 0.047, 0.047, w("UpperArm", "Forearm", 0.04)],
           [at(upper, elbow, 0.86), 0.043, 0.043, w("UpperArm", "Forearm", 0.22)],
@@ -1647,19 +1691,26 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.d
         const face = [geo.index.getX(j), geo.index.getX(j + 1), geo.index.getX(j + 2)];
         for (const a of face) for (const b of face) if (a !== b) neighbors[a].add(b);
       }
+      const isShoulder = (i) => {
+        const y = pAttr.getY(i), x = Math.abs(pAttr.getX(i));
+        return y > 1.26 && y < 1.49 && x > 0.12;
+      };
       const smoothVertices = used.map((_, i) => i).filter((i) => {
         const y = pAttr.getY(i), x = Math.abs(pAttr.getX(i));
-        return (y > 0.80 && y < 1.015 && x < 0.24) || (y > 1.28 && y < 1.47 && x > 0.13);
+        return (y > 0.80 && y < 1.015 && x < 0.24) || isShoulder(i);
       });
-      // Local Taubin relaxation rounds the junctions without opening seams or shrinking the body.
-      for (const factor of [0.45, -0.46, 0.45, -0.46, 0.45, -0.46]) {
-        const updates = smoothVertices.map((i) => {
+      const shoulderVertices = smoothVertices.filter(isShoulder);
+      // Local Taubin relaxation rounds the junctions without opening seams or shrinking the body;
+      // the shoulder gets extra passes to fair the rim into the first arm rings.
+      const taubin = [0.45, -0.46, 0.45, -0.46, 0.45, -0.46];
+      for (const [verts, factor] of [...taubin.map((f) => [smoothVertices, f]), ...taubin.map((f) => [shoulderVertices, f])]) {
+        const updates = verts.map((i) => {
           const p = new THREE.Vector3().fromBufferAttribute(pAttr, i);
           const mean = new THREE.Vector3();
           for (const j of neighbors[i]) mean.add(new THREE.Vector3().fromBufferAttribute(pAttr, j));
           return p.lerp(mean.divideScalar(neighbors[i].size), factor);
         });
-        smoothVertices.forEach((i, j) => pAttr.setXYZ(i, updates[j].x, updates[j].y, updates[j].z));
+        verts.forEach((i, j) => pAttr.setXYZ(i, updates[j].x, updates[j].y, updates[j].z));
       }
       geo.computeVertexNormals();
       geo.userData.faceSlots = faceSlots;
