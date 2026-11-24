@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Default Adult Male SkinnedMesh Prototype (Phases 1-3)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      margin: 0;
+      overflow: hidden;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+    input[type="range"] { accent-color: #38bdf8; }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden select-none">
+  <div id="viewport" class="relative w-full h-full"></div>
+
+  <div class="fixed left-3 right-3 md:right-[340px] pointer-events-none flex flex-wrap items-center justify-between gap-2 z-20" style="top:calc(0.75rem + env(safe-area-inset-top, 0px))">
+    <div class="pointer-events-auto bg-slate-900/80 backdrop-blur-md border border-slate-700/70 rounded-2xl px-4 py-2.5 shadow-xl">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+        <h1 class="text-sm sm:text-base font-semibold tracking-tight text-white">Adult Male SkinnedMesh Prototype</h1>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-0.5" id="statsLine">Initializing 53-bone rig &amp; procedural geometry...</p>
+    </div>
+
+    <div class="pointer-events-auto flex flex-wrap items-center gap-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-700/70 rounded-2xl p-1.5 shadow-xl">
+      <button id="camFullBtn" class="px-3 py-1.5 text-xs font-medium rounded-xl bg-sky-500 text-slate-950 hover:bg-sky-400 transition">Full Body</button>
+      <button id="camFaceBtn" class="px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Face Close-Up</button>
+      <button id="camHandsBtn" class="px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Hands View</button>
+      <button id="togglePanelBtn" class="md:hidden px-3 py-1.5 text-xs font-medium rounded-xl bg-slate-700 text-white">Controls</button>
+    </div>
+  </div>
+
+  <aside id="controlPanel" class="fixed right-3 w-[316px] max-w-[calc(100vw-24px)] bg-slate-900/85 backdrop-blur-lg border border-slate-700/70 rounded-2xl shadow-2xl z-30 flex flex-col overflow-hidden transition-transform duration-200 translate-x-[120%] md:translate-x-0" style="top:calc(0.75rem + env(safe-area-inset-top, 0px)); bottom:calc(0.75rem + env(safe-area-inset-bottom, 0px))">
+    <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+      <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Character Tools</span>
+      <button id="closePanelBtn" class="md:hidden text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800">Close</button>
+    </div>
+
+    <div class="grid grid-cols-4 gap-1.5 p-3 border-b border-slate-800">
+      <button id="rigTabBtn" aria-pressed="true" class="py-2 text-xs rounded-xl bg-sky-500 text-slate-950">Rig &amp; Animation</button>
+      <button id="materialsTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Materials</button>
+      <button id="headTabBtn" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Head Sculpt</button>
+      <button id="torsoTabBtn" aria-controls="torsoTools" aria-pressed="false" class="py-2 text-xs rounded-xl bg-slate-800 text-slate-200">Torso Sculpt</button>
+    </div>
+    <div id="rigTools" class="flex-1 overflow-y-auto p-4 space-y-5 text-xs">
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2">
+        <h2 class="font-semibold text-slate-200">Dress Up / Clothing Slots</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">The default is an unclothed, smooth doll base with bare feet and five toes per foot. Clothing is removable and follows the body rig; it never replaces body geometry.</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-outfit="base" class="py-2 rounded-xl bg-slate-800">Base body</button>
+          <button data-outfit="casual" class="py-2 rounded-xl bg-slate-800">Casual</button>
+          <button data-outfit="long" class="py-2 rounded-xl bg-slate-800">Long outfit</button>
+        </div>
+        <div id="clothingControls" class="space-y-2"></div>
+        <p id="clothingStatus" role="status" aria-live="polite" class="text-[11px] text-sky-300">All clothing slots empty.</p>
+        <details class="text-[10px] text-slate-400 select-text">
+          <summary class="cursor-pointer">Outfit API</summary>
+          <p class="mt-1 leading-relaxed">window.proceduralHuman.character.setClothing(slot, item) swaps one slot. setOutfit({ torso, arms, legs, feet }) swaps a complete outfit; omitted slots are cleared. Use "none" to undress. clothingSlots exposes each slot's items and current mesh. Slots cover both limbs and share the base skeleton and bind pose.</p>
+        </details>
+      </section>
+      <section>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold text-slate-200">1. Base Locomotion &amp; Stance</h2>
+          <span id="baseStateBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-medium">idle</span>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5" id="baseAnimGrid">
+          <button data-base="idle" class="base-btn py-2 rounded-xl font-medium bg-sky-500 text-slate-950 transition">Idle</button>
+          <button data-base="walking" class="base-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Walking</button>
+          <button data-base="running" class="base-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Running</button>
+          <button data-base="jumping" class="base-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Jumping</button>
+          <button data-base="crouching" class="base-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Crouching</button>
+          <button data-base="sitting" class="base-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Sitting</button>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="font-semibold text-slate-200 mb-2">2. Upper-Body Overlays (Layered)</h2>
+        <div class="grid grid-cols-2 gap-1.5" id="upperAnimGrid">
+          <button data-upper="none" class="upper-btn py-2 rounded-xl font-medium bg-sky-500 text-slate-950 transition">None</button>
+          <button data-upper="waving" class="upper-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Waving</button>
+          <button data-upper="holding" class="upper-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Holding Prop</button>
+          <button data-upper="reaching" class="upper-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Reaching (IK)</button>
+        </div>
+        <h3 class="mt-4 mb-2 text-xs font-semibold text-slate-300">Hand gestures (both hands)</h3>
+        <div id="handGestures" class="grid grid-cols-3 gap-2 text-xs">
+          <button data-hand="relaxed" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Relaxed</button>
+          <button data-hand="open" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Open</button>
+          <button data-hand="grip" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Grip</button>
+          <button data-hand="point" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Point</button>
+          <button data-hand="thumbsUp" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Thumbs Up</button>
+          <button data-hand="spread" class="hand-btn py-2 rounded-xl bg-slate-800 text-slate-200">Spread</button>
+          <button data-hand="auto" class="hand-btn col-span-3 py-2 rounded-xl bg-sky-500 text-slate-950">Follow Animation</button>
+        </div>
+        <div class="mt-2 flex gap-2 text-xs">
+          <button id="viewLeftHand" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-200">Inspect Left Hand</button>
+          <button id="viewRightHand" class="flex-1 py-2 rounded-xl bg-slate-800 text-slate-200">Inspect Right Hand</button>
+        </div>
+        <p class="mt-2 text-[11px] text-slate-400">Gestures blend smoothly over locomotion. Waving and holding supply their own right-hand pose until a gesture is selected. API: character.setHandGesture("grip", "both"); side may also be "L" or "R". Use "auto" to restore overlay control. Orbit Hands View to inspect the palm, knuckles, webs and nails.</p>
+      </section>
+
+      <section>
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold text-slate-200">3. Facial Expressions (FACS)</h2>
+          <div class="flex items-center gap-2.5">
+            <label class="inline-flex items-center gap-1 text-[11px] text-slate-400 cursor-pointer">
+              <input id="autoGazeToggle" type="checkbox" checked class="rounded" />
+              Saccades
+            </label>
+            <label class="inline-flex items-center gap-1 text-[11px] text-slate-400 cursor-pointer">
+              <input id="autoBlinkToggle" type="checkbox" checked class="rounded" />
+              Blink
+            </label>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-1.5" id="faceAnimGrid">
+          <button data-face="neutral" class="face-btn py-2 rounded-xl font-medium bg-sky-500 text-slate-950 transition">Neutral</button>
+          <button data-face="smiling" class="face-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Smiling</button>
+          <button data-face="frowning" class="face-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Frowning</button>
+          <button data-face="shocked" class="face-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Shocked</button>
+          <button data-face="skeptical" class="face-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Skeptical</button>
+          <button data-face="speaking" class="face-btn py-2 rounded-xl font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Speaking</button>
+        </div>
+        <button id="blinkNowBtn" class="mt-1.5 w-full py-1.5 rounded-xl font-medium bg-indigo-600/90 text-white hover:bg-indigo-500 transition">Trigger Blink Now</button>
+      </section>
+
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-slate-200">4. Deformable Face &amp; FACS Sliders</h2>
+          <button id="resetFaceSlidersBtn" class="text-[10px] text-sky-400 hover:text-sky-300 underline">Reset</button>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Mouth (Jaw Open)</span><span id="valJaw">0.00</span></div>
+            <input id="slJaw" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Tongue Out</span><span id="valTongueOut">0.00</span></div>
+              <input id="slTongueOut" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Tongue Tip Bend</span><span id="valTongueCurl">0.00</span></div>
+              <input id="slTongueCurl" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+          </div>
+          <p class="text-[11px] text-slate-400">The tongue rests behind the lower incisors. Tongue Out opens the jaw for clearance; Tip Bend curls the exposed tip up or down. API: character.faceSliders.tongueOut (0-1), tongueCurl (-1 to 1). TongueBase, TongueMid and TongueTip are jaw-parented animation bones.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>FACS Smile</span><span id="valSmile">0.00</span></div>
+              <input id="slSmile" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>FACS Pucker</span><span id="valPucker">0.00</span></div>
+              <input id="slPucker" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Brow Inner Up</span><span id="valBrowUp">0.00</span></div>
+              <input id="slBrowUp" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Brow Furrow</span><span id="valBrowDown">0.00</span></div>
+              <input id="slBrowDown" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+          </div>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Cheek Squint (Duchenne)</span><span id="valCheek">0.00</span></div>
+            <input id="slCheek" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Upper Lip Lift / Press</span><span id="valUpperLip">0.00</span></div>
+            <input id="slUpperLip" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Lower Lip Drop / Pout</span><span id="valLowerLip">0.00</span></div>
+            <input id="slLowerLip" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Top Eyelids (Open ↔ Close)</span><span id="valLidTop">0.00</span></div>
+            <input id="slLidTop" type="range" min="-0.5" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Bottom Eyelids (Drop ↔ Squint)</span><span id="valLidBot">0.00</span></div>
+            <input id="slLidBot" type="range" min="-0.5" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Eye Gaze X</span><span id="valEyeX">0.00</span></div>
+              <input id="slEyeX" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <label class="block">
+              <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Eye Gaze Y</span><span id="valEyeY">0.00</span></div>
+              <input id="slEyeY" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+            </label>
+            <p class="col-span-2 text-[11px] leading-relaxed text-slate-400">Gaze also turns and tilts the head. Use Face Close-Up and orbit to inspect the jaw and neck from the side, back, or below.</p>
+          </div>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Nose Scrunch &amp; Flare</span><span id="valNose">0.00</span></div>
+            <input id="slNose" type="range" min="0" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+          <label class="block">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-0.5"><span>Ears Wiggle</span><span id="valEars">0.00</span></div>
+            <input id="slEars" type="range" min="-1" max="1" step="0.01" value="0" class="w-full" />
+          </label>
+        </div>
+      </section>
+
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2">
+        <h2 class="font-semibold text-slate-200">5. Debug &amp; Rapier Readiness</h2>
+        <div class="flex flex-col gap-1.5 text-[11px] text-slate-300">
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input id="showSkeletonToggle" type="checkbox" class="rounded" />
+            Show SkeletonHelper (Bones)
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input id="showRapierToggle" type="checkbox" class="rounded" />
+            Show Rapier Capsule Collider
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input id="wireframeToggle" type="checkbox" class="rounded" />
+            Wireframe Topology View
+          </label>
+        </div>
+        <div id="rapierReadout" class="mt-2 p-2 rounded-lg bg-slate-900 text-[10px] font-mono text-emerald-300 leading-relaxed whitespace-pre-line">
+          Rapier Capsule: r=0.28m, hh=0.61m (H=1.78m)
+        </div>
+      </section>
+    </div>
+    <div id="torsoTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Torso Anatomy</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Enable each detail independently and adjust its shape live. Use Base body in Rig &amp; Animation to see details without clothing.</p>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button id="torsoFrontBtn" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Front View</button>
+          <button id="torsoRearBtn" class="py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Rear View</button>
+        </div>
+      </section>
+      <div id="torsoControls" class="space-y-3"></div>
+      <button id="resetTorsoBtn" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700">Reset Torso</button>
+      <details class="text-[10px] text-slate-400 select-text">
+        <summary class="cursor-pointer">Torso API</summary>
+        <p class="mt-1 leading-relaxed">window.proceduralHuman.character.setTorsoDetails({ pectorals: { enabled: true, depth: 25 } }) applies a partial update. Read torsoDetails for the current settings or call resetTorsoDetails() to restore defaults.</p>
+      </details>
+    </div>
+    <div id="headTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-3">
+        <h2 class="font-semibold text-slate-200">Default Head &amp; Face Editor</h2>
+        <label class="flex items-center gap-2 text-sky-300">
+          <input id="headEditorToggle" type="checkbox" />
+          Edit neutral head in the canvas
+        </label>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Animation pauses while editing. Left-drag to sculpt, right-drag to orbit, middle-drag to pan, and scroll to zoom. Shift reverses Raise / Lower. Edits are saved in this browser; export code to keep them in the HTML.</p>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-head-view="front" class="py-2 rounded-xl bg-slate-800">Front</button>
+          <button data-head-view="left" class="py-2 rounded-xl bg-slate-800">Left</button>
+          <button data-head-view="right" class="py-2 rounded-xl bg-slate-800">Right</button>
+        </div>
+        <label class="block space-y-1">
+          <span class="text-slate-300">Part to adjust / sculpt</span>
+          <select id="headPart" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2">
+            <option value="skin">Face / skull skin</option>
+            <option value="all">Entire head</option>
+            <option value="eyes">Eyes + eyelids</option>
+            <option value="lidTop">Upper eyelids</option>
+            <option value="lidBot">Lower eyelids</option>
+            <option value="brows">Eyebrows</option>
+            <option value="ears">Ears</option>
+            <option value="hair">Hair cap</option>
+            <option value="teeth">Teeth</option>
+            <option value="cavity">Mouth interior / tongue</option>
+          </select>
+        </label>
+      </section>
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-3">
+        <h2 class="font-semibold text-slate-200">Canvas brush</h2>
+        <select id="headBrush" aria-label="Sculpt brush" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2">
+          <option value="raise">Raise</option>
+          <option value="lower">Lower</option>
+          <option value="move">Grab / move</option>
+          <option value="smooth">Smooth</option>
+          <option value="orbit">Navigate only</option>
+        </select>
+        <label class="block">
+          <div class="flex justify-between text-slate-400"><span>Radius</span><output id="headRadiusValue">15 mm</output></div>
+          <input id="headRadius" type="range" min="3" max="60" step="1" value="15" class="w-full" />
+        </label>
+        <label class="block">
+          <div class="flex justify-between text-slate-400"><span>Strength</span><output id="headStrengthValue">0.40</output></div>
+          <input id="headStrength" type="range" min="0.05" max="1" step="0.05" value="0.4" class="w-full" />
+        </label>
+        <label class="flex items-center gap-2 text-slate-300"><input id="headMirror" type="checkbox" checked /> Mirror across the face center</label>
+      </section>
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Part size &amp; placement</h2>
+        <div id="headTransformControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <h2 class="font-semibold text-slate-200">Facial contour adjustments</h2>
+        <p class="text-[11px] text-slate-400">Signed millimeter offsets sculpt the neutral face, not an expression. The nose and lips use dense contour sampling; smooth recessed nostril shading follows the sculpt and facial animation.</p>
+        <div id="headFeatureControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <div class="grid grid-cols-3 gap-1.5">
+          <button id="undoHeadBtn" class="py-2 rounded-xl bg-slate-800 disabled:opacity-40" disabled>Undo</button>
+          <button id="redoHeadBtn" class="py-2 rounded-xl bg-slate-800 disabled:opacity-40" disabled>Redo</button>
+          <button id="resetHeadBtn" class="py-2 rounded-xl bg-slate-800">Reset edits</button>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Replace only the buildHeadAndFaceParts function in this HTML with the generated function below. It includes the base sculpt, saved part transforms, and procedural brush strokes. Existing geometry helpers, THREE, and BufferGeometryUtils are required.</p>
+        <textarea id="headSource" readonly aria-label="Generated procedural head function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="copyHeadBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
+          <button id="exportHeadBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+        </div>
+        <p id="headStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
+      </section>
+    </div>
+    <div id="materialTools" hidden class="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+      <section class="space-y-3">
+        <h2 class="font-semibold text-slate-200">Textures &amp; Materials</h2>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Changes preview live. Body and head share non-repeating rest-position tone variation, filtered pores, and anatomical roughness. Pore relief fades below pixel size to stay stable at distance and grazing angles. Subsurface scattering is a shadow-aware direct-light wrapped-diffuse/backscatter approximation with estimated thickness, not full diffusion. Skin bump height is in millimeters; base surface properties are independent.</p>
+        <label class="block space-y-1">
+          <span class="text-slate-300">Material slot</span>
+          <select id="materialSlot" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2"></select>
+        </label>
+        <label class="flex items-center justify-between text-slate-300">
+          <span id="materialColorLabel">Base color</span>
+          <input id="materialColor" type="color" class="w-12 h-8 bg-slate-800 rounded cursor-pointer" />
+        </label>
+        <div id="textureControls" class="space-y-2"></div>
+      </section>
+      <section class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-3">
+        <h2 class="font-semibold text-slate-200">Surface properties</h2>
+        <div id="surfaceControls" class="space-y-2"></div>
+      </section>
+      <section class="space-y-2">
+        <div class="flex justify-between items-center">
+          <h2 class="font-semibold text-slate-200">Reusable function</h2>
+          <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses skinTileSize in meters (microdetail only; broad tone does not tile), skinPoreDepth (0-2), skinColorVariation, skinRoughnessVariation, skinScattering (0-1), and skinThicknessScale (0.25-4). Pore relief is footprint-filtered; skinDetail controls pore and tone detail. Thickness masks assume this prototype's meter-scale neutral anatomy; standard shadow maps can suppress self-shadowed backscatter. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
+        <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
+          <button id="exportMaterialsBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+        </div>
+        <p id="materialStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
+      </section>
+    </div>
+  </aside>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
