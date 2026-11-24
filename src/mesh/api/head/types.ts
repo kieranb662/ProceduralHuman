@@ -1,4 +1,5 @@
 import type { MeshPart } from "../types.js";
+import type { Vec3Tuple } from "../../../shared/vector.js";
 
 /** Head part groups that transforms and sculpt strokes can target (see headTargetTags). */
 export const HEAD_TARGETS = ["all", "skin", "eyes", "lidTop", "lidBot", "brows", "ears", "hair", "teeth", "cavity"] as const;
@@ -16,7 +17,6 @@ export type HeadFeature = (typeof HEAD_FEATURES)[number];
 export const HEAD_BRUSH_MODES = ["raise", "lower", "move", "smooth"] as const;
 export type HeadBrushMode = (typeof HEAD_BRUSH_MODES)[number];
 
-export type Vec3Tuple = [number, number, number];
 
 /** One recorded sculpt brush stroke, replayed procedurally on the base head. */
 export interface HeadStroke {

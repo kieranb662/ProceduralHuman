@@ -1,3 +1,2 @@
-/** Lighting: environment and light rigs.
- * Editor layer: interactive tooling built from the Shareable UI components. */
-export {};
+// Section editor elements (built from the shared ph- UI components).
+export * from "./lighting-editor.js";

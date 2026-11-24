@@ -40,3 +40,8 @@ export function handPoseQuaternions(side, pose) {
 export type HandGestureName = keyof typeof HAND_GESTURES;
 /** "auto" lets the active clip/IK drive the fingers. */
 export type HandGesture = HandGestureName | "auto";
+
+export const HAND_GESTURE_LABELS: Record<HandGesture, string> = {
+  relaxed: "Relaxed", open: "Open", grip: "Grip", point: "Point", thumbsUp: "Thumbs Up", spread: "Spread",
+  auto: "Follow Animation",
+};

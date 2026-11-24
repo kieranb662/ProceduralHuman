@@ -14,3 +14,6 @@ export * from "./humans/create-character.js";
 export * from "./humans/create-human.js";
 export * from "./humans/design.js";
 export type * from "./humans/types.js";
+export { createParkMillerRng } from "./shared/random.js";
+export type { Vec3Tuple } from "./shared/vector.js";
+export type { NumericParameter } from "./shared/parameters.js";

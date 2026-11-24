@@ -23,6 +23,37 @@ skin shaders patch three's built-in shader chunks.
 | `@kieranb662/procedural-human/editor` | Interactive editor tooling |
 | `@kieranb662/procedural-human/ui` | Reusable web components (sliders, buttons, tabs, panels) |
 
+## Quick start
+
+```js
+import * as THREE from "three";
+import { createHuman, createStudioLighting } from "@kieranb662/procedural-human";
+import { defaultAdultMale } from "@kieranb662/procedural-human/humans";
+
+const human = createHuman(defaultAdultMale);
+scene.add(human.root);
+const lighting = createStudioLighting();
+scene.add(lighting.group);
+renderer.setAnimationLoop(() => human.update(clock.getDelta(), { autoBlink: true, autoGaze: true }));
+```
+
+## Editors
+
+Every section ships a themeable web component built from the shared `ph-*` UI components:
+
+```js
+import { registerEditorElements } from "@kieranb662/procedural-human/editor";
+registerEditorElements();
+document.querySelector("ph-materials-editor").character = human;
+document.querySelector("ph-lighting-editor").lighting = lighting;
+document.querySelector("ph-head-editor").viewport = { renderer, camera, controls, scene };
+```
+
+Elements: `ph-animation-editor`, `ph-face-editor`, `ph-clothing-editor`, `ph-torso-editor`, `ph-head-editor`,
+`ph-materials-editor`, `ph-lighting-editor`, `ph-rig-debug`, `ph-physics-debug`, `ph-human-export`.
+They emit a bubbling `ph-change` event (`{ section, ... }`). Restyle with `--ph-*` CSS custom properties
+(see `PH_THEME_TOKENS`). `examples/editor-playground` is a minimal integration.
+
 ## Source layout
 
 ```
@@ -56,5 +87,5 @@ The library is being extracted from the original single-file prototype in stages
 2. ✅ Prototype library code split into section modules under `src/` (verified identical output in the demo).
 3. ✅ Public types (`ProceduralCharacter`, `CharacterOptions`, `HeadDesign`, `Palette`, ...); headless unit tests.
 4. ✅ Data-driven code generation (`captureHumanDesign` + `generateHumanModule`) and the first bundled preset (`defaultAdultMale`).
-5. ⏳ Split `createAdultMaleCharacter` orchestration; lighting, physics and editor layers; web components.
-6. ⏳ `rng` option, `dispose()`, unit tests; strict TypeScript; CI publishing.
+5. ✅ Character factory split into section controllers; studio lighting; `ph-*` web components and section editors (including the viewport head sculptor).
+6. ⏳ `dispose()`, strict TypeScript, visual regression tests, CI publishing. (`rng` option and unit tests are done.)

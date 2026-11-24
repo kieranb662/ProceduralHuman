@@ -9,3 +9,10 @@ export type ClothingSlot = keyof typeof CLOTHING_ITEMS;
 export type ClothingItem<S extends ClothingSlot = ClothingSlot> = keyof (typeof CLOTHING_ITEMS)[S];
 /** Item per clothing slot; omitted slots are empty ("none"). */
 export type Outfit = { [S in ClothingSlot]?: ClothingItem<S> };
+
+/** Complete outfits; omitted slots are empty. */
+export const OUTFIT_PRESETS = {
+  base: { label: "Base body", outfit: {} },
+  casual: { label: "Casual", outfit: { torso: "shirt", arms: "short", legs: "shorts" } },
+  long: { label: "Long outfit", outfit: { torso: "shirt", arms: "long", legs: "trousers", feet: "wraps" } },
+} as const satisfies Record<string, { label: string; outfit: Outfit }>;

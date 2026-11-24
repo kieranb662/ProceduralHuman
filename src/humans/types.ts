@@ -5,8 +5,10 @@ import type { FaceSliders } from "../animations/api/face-sliders.js";
 import type { Palette } from "../materials/api/palette.js";
 import type { TorsoDetailChanges, TorsoDetails } from "../mesh/api/body/torso.js";
 import type { ClothingItem, ClothingSlot, Outfit } from "../mesh/api/clothing/items.js";
-import type { HeadDesign, HeadParts } from "../mesh/api/head/types.js";
+import type { HeadDesign } from "../mesh/api/head/types.js";
 import type { MeshPart } from "../mesh/api/types.js";
+import type { ClothingSlotState } from "../mesh/api/clothing/clothing-controller.js";
+import type { HeadPreview } from "../mesh/api/head/head-editing.js";
 import type { PhysicsDescriptor } from "../physics/api/capsules.js";
 import type { HumanoidRig } from "../rigging/api/types.js";
 import type { CanvasFactory } from "../textures/api/canvas.js";
@@ -19,6 +21,8 @@ export interface CharacterOptions {
   outfit?: Outfit;
   /** Canvas factory for procedural textures (needed outside a browser page). */
   createCanvas?: CanvasFactory;
+  /** Random source for blink and gaze timing (default Math.random). Pass a seeded one for deterministic replays and tests. */
+  rng?: () => number;
 }
 
 /** Per-frame options for ProceduralCharacter.update(). */
@@ -29,20 +33,6 @@ export interface CharacterUpdateOptions {
   autoGaze?: boolean;
   /** World-space target for the right-arm "reaching" IK state. */
   reachTarget?: THREE.Vector3 | null;
-}
-
-export interface ClothingSlotState {
-  items: Record<string, string>;
-  item: string;
-  mesh: THREE.SkinnedMesh | null;
-}
-
-/** A head rebuilt off-screen for live editing; pass it to commitHeadPreview() to apply. */
-export interface HeadPreview {
-  rig: HumanoidRig;
-  parts: HeadParts;
-  geometry: THREE.BufferGeometry;
-  ranges: { part: MeshPart; offset: number; indexStart: number; indexCount: number }[];
 }
 
 /** The object returned by createAdultMaleCharacter(). */
@@ -84,10 +74,15 @@ export interface ProceduralCharacter {
 
   /** Full current palette: colors, resolved texture settings and the live surface values of every slot. */
   readonly palette: Required<Palette>;
-  /** Rebuilds all materials from a palette, disposing the old ones and their textures. */
-  setPalette(palette: Palette): void;
+  /**
+   * Rebuilds all materials from a palette, disposing the old ones and their textures.
+   * `{ rebuild: false }` only records the palette (after applying live edits to the materials yourself).
+   */
+  setPalette(palette: Palette, options?: { rebuild?: boolean }): void;
 
   readonly torsoDetails: TorsoDetails;
   setTorsoDetails(changes: TorsoDetailChanges): void;
   resetTorsoDetails(): void;
 }
+
+export type { ClothingSlotState, HeadPreview };

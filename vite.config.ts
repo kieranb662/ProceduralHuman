@@ -11,7 +11,10 @@ export default defineConfig({
     outDir: resolve(__dirname, "dist-demo"),
     emptyOutDir: true,
     rollupOptions: {
-      input: { "default-male": resolve(__dirname, "examples/default-male/index.html") },
+      input: {
+        "default-male": resolve(__dirname, "examples/default-male/index.html"),
+        "editor-playground": resolve(__dirname, "examples/editor-playground/index.html"),
+      },
     },
   },
 });

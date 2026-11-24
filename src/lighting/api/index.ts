@@ -1,2 +1,2 @@
 // Generated barrel: re-exports this section's API modules.
-export {};
+export * from "./studio-lighting.js";

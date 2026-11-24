@@ -13,3 +13,11 @@ export type FaceExpressionClip = (typeof FACE_EXPRESSIONS)[number];
 export type FaceExpression = FaceExpressionClip | "neutral";
 
 export type ClipName = BaseAnimation | UpperAnimationClip | FaceExpressionClip;
+
+/** Human-readable labels for every animation state, for menus and editors. */
+export const ANIMATION_LABELS: Record<BaseAnimation | UpperAnimation | FaceExpression, string> = {
+  idle: "Idle", walking: "Walking", running: "Running", jumping: "Jumping", crouching: "Crouching", sitting: "Sitting",
+  none: "None", waving: "Waving", holding: "Holding Prop", reaching: "Reaching (IK)",
+  neutral: "Neutral", smiling: "Smiling", frowning: "Frowning", shocked: "Shocked", skeptical: "Skeptical",
+  speaking: "Speaking", blinking: "Blinking",
+};

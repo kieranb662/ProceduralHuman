@@ -1,3 +1,4 @@
-/** Mesh: procedural body, head, hands and clothing geometry.
- * Editor layer: interactive tooling built from the Shareable UI components. */
-export {};
+// Section editor elements (built from the shared ph- UI components).
+export * from "./clothing-editor.js";
+export * from "./head-editor.js";
+export * from "./torso-editor.js";

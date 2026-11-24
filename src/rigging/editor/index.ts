@@ -1,3 +1,2 @@
-/** Rigging: skeleton, bone constants, skin weights and IK.
- * Editor layer: interactive tooling built from the Shareable UI components. */
-export {};
+// Section editor elements (built from the shared ph- UI components).
+export * from "./rig-debug.js";

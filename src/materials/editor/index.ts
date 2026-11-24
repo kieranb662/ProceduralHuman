@@ -1,3 +1,2 @@
-/** Materials: material construction and shader patches.
- * Editor layer: interactive tooling built from the Shareable UI components. */
-export {};
+// Section editor elements (built from the shared ph- UI components).
+export * from "./materials-editor.js";
