@@ -26,6 +26,7 @@
       }
     }
   </script>
+  <script src="fbx-exporter.js"></script>
 </head>
 <body class="h-screen w-screen overflow-hidden select-none">
   <div id="viewport" class="relative w-full h-full"></div>
@@ -47,6 +48,7 @@
       <button id="waveBtn" class="px-3 py-1.5 font-medium rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Wave Hand</button>
       <button id="outfitBtn" class="px-3 py-1.5 font-medium rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition">Outfit: Casual</button>
       <button id="followBtn" class="px-3 py-1.5 font-medium rounded-xl bg-sky-500 text-slate-950 hover:bg-sky-400 transition">Cam Follow: On</button>
+      <button id="exportFbxBtn" class="px-3 py-1.5 font-medium rounded-xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-wait transition">Export FBX</button>
     </div>
   </div>
 
@@ -4503,7 +4505,12 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( ${diffuseV
     character.setBaseAnimation("walking");
     scene.add(character.root);
 
-    window.proceduralHuman = { character, createAdultMaleCharacter };
+    // Standard humanoid FBX (Mixamo bone names, T-pose bind, baked textures). See fbx-exporter.js.
+    const exportFBX = (options = {}) => {
+      if (!window.ProceduralHumanFBX) throw new Error("fbx-exporter.js did not load.");
+      return window.ProceduralHumanFBX.exportCharacterFBX(THREE, character, { renderer, ...options });
+    };
+    window.proceduralHuman = { character, createAdultMaleCharacter, exportFBX };
 
     const vertCount = character.skinnedMesh.geometry.attributes.position.count;
     const triCount = character.skinnedMesh.geometry.index.count / 3;
@@ -4635,6 +4642,31 @@ reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( ${diffuseV
       const next = outfits[currentOutfitIdx];
       character.setOutfit(next.config);
       outfitBtn.textContent = `Outfit: ${next.label}`;
+    });
+
+    const exportFbxBtn = document.getElementById("exportFbxBtn");
+    exportFbxBtn.addEventListener("click", async () => {
+      exportFbxBtn.disabled = true;
+      try {
+        const { blob, filename, report } = await exportFBX({
+          onProgress: (msg) => { exportFbxBtn.textContent = `${msg}…`; },
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        console.info("[fbx-exporter]", report);
+      } catch (err) {
+        console.error("[fbx-exporter]", err);
+        alert(`FBX export failed: ${err.message}`);
+      } finally {
+        exportFbxBtn.disabled = false;
+        exportFbxBtn.textContent = "Export FBX";
+      }
     });
 
     followBtn.addEventListener("click", () => {
