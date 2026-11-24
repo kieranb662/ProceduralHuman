@@ -1,18 +1,25 @@
 import * as THREE from "three";
+import type { MeshPart } from "../types.js";
+import type { ClothingSlot } from "./items.js";
 import { buildGeometryFromArrays } from "../geometry/attributes.js";
 
-export function buildClothingGeometry(bodyParts, slot, item) {
-  const positions = [], normals = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
-  const coveredTriangles = [], sourceVertices = [];
+/**
+ * Builds a garment by offsetting the body faces tagged for `slot`/`item` along their normals.
+ * userData.coveredTriangles lists the body index offsets the garment hides.
+ */
+export function buildClothingGeometry(bodyParts: MeshPart[], slot: ClothingSlot, item: string): THREE.BufferGeometry {
+  const positions: number[] = [], normals: number[] = [], uvs: number[] = [], colors: number[] = [];
+  const skinIdx: number[] = [], skinWgt: number[] = [], indices: number[] = [];
+  const coveredTriangles: number[] = [], sourceVertices: number[] = [];
   const offset = slot === "torso" || slot === "arms" ? 0.010 : 0.007;
   let indexOffset = 0, vertexOffset = 0;
   bodyParts.forEach((part) => {
-    const geo = part.geo;
+    const geo = part.geo, index = geo.index!;
     const slots = geo.userData.faceSlots;
     const p = geo.attributes.position, n = geo.attributes.normal;
     const vertexMap = new Map();
-    if (slots) for (let j = 0; j < geo.index.count; j += 3) {
-      const face = [geo.index.getX(j), geo.index.getX(j + 1), geo.index.getX(j + 2)];
+    if (slots) for (let j = 0; j < index.count; j += 3) {
+      const face = [index.getX(j), index.getX(j + 1), index.getX(j + 2)];
       const region = slots[j / 3];
       const band = geo.userData.faceBands?.[j / 3];
       const y = face.reduce((sum, i) => sum + p.getY(i), 0) / 3;
@@ -40,7 +47,7 @@ export function buildClothingGeometry(bodyParts, slot, item) {
         indices.push(vertexMap.get(i));
       }
     }
-    indexOffset += geo.index.count;
+    indexOffset += index.count;
     vertexOffset += p.count;
   });
   if (!indices.length) throw new Error(`No geometry for clothing slot ${slot}: ${item}.`);
@@ -53,11 +60,12 @@ export function buildClothingGeometry(bodyParts, slot, item) {
   return geo;
 }
 
-export function fitClothingToBody(geo, body) {
+/** Re-projects a garment onto the (re-sculpted) body surface it was built from. */
+export function fitClothingToBody(geo: THREE.BufferGeometry, body: THREE.BufferGeometry): void {
   const { sourceVertices, surfaceOffset } = geo.userData;
   const { position, normal } = geo.attributes;
   const { position: p, normal: n } = body.attributes;
-  sourceVertices.forEach((j, i) => {
+  (sourceVertices as number[]).forEach((j, i) => {
     const x = n.getX(j), y = n.getY(j), z = n.getZ(j);
     position.setXYZ(i, p.getX(j) + x * surfaceOffset, p.getY(j) + y * surfaceOffset, p.getZ(j) + z * surfaceOffset);
     normal.setXYZ(i, x, y, z);

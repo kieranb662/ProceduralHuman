@@ -1,3 +1,5 @@
+import type { KeyedMap } from "../../../rigging/api/types.js";
+import type { MouthLoopVertex } from "./types.js";
 import * as THREE from "three";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import { ensureUniformAttributes } from "../geometry/attributes.js";
@@ -9,7 +11,7 @@ import { smoothstep } from "../../../shared/math.js";
 export let ORAL_LOFT_VERTS = 0;
 
 // Inner-mouth bag whose first ring IS the lip opening (same vertices + skin weights), tapering inward
-export function buildLoopCavity(loop, mouthY, bHead, bJaw) {
+export function buildLoopCavity(loop: MouthLoopVertex[], mouthY: number, bHead: number, bJaw: number): THREE.BufferGeometry {
   const n = loop.length;
   const c = new THREE.Vector3();
   for (const p of loop) c.add(p.pos);
@@ -61,8 +63,8 @@ export function buildLoopCavity(loop, mouthY, bHead, bJaw) {
   return geo;
 }
 
-export function buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop, boneIndex) {
-  const parts = [];
+export function buildOralCavityAndTongue(mouthY: number, bHead: number, bJaw: number, mouthLoop: MouthLoopVertex[], boneIndex: KeyedMap<number>) {
+  const parts: THREE.BufferGeometry[] = [];
 
   const cavRings = [];
   const depthSteps = [
@@ -103,7 +105,7 @@ export function buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop, boneInd
   for (let r = 0; r <= ringCount; r++) {
     const t = 1 - Math.pow(1 - r / ringCount, 1.35);
     const z = z0 + t * (z1 - z0);
-    const tipRound = (k) => Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, t - k) / (1 - k), 2)));
+    const tipRound = (k: number) => Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, t - k) / (1 - k), 2)));
     const rootT = Math.max(0, 1 - t / 0.2);
     const halfW = Math.max(0.0002, 0.0172 * (1 - 0.22 * rootT * rootT) * tipRound(0.58));
     const halfH = Math.max(0.0002, THREE.MathUtils.lerp(0.0068, 0.0034, smoothstep(0.35, 0.92, t)) * tipRound(0.80));

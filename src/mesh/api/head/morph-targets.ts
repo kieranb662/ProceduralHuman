@@ -1,16 +1,25 @@
+import type { HumanoidRig } from "../../../rigging/api/types.js";
+import type { HeadDesign, HeadTarget } from "./types.js";
 import * as THREE from "three";
 import { FACS_MORPH_NAMES } from "../../../animations/api/facs.js";
 import { ORAL_LOFT_VERTS } from "./oral-cavity.js";
 import { gauss, smoothstep } from "../../../shared/math.js";
 
 // --- 2F. Procedural FACS Morph Target Generator ---
-export function buildFacialMorphTargets(mergedGeo, rig, headGroupIdx, cavGroupIdx, referenceGeo = mergedGeo, design = null) {
+/**
+ * Adds the FACS morph targets to the merged character geometry. Shapes are computed on the neutral
+ * `referenceGeo` and scaled by the head design's part transforms.
+ */
+export function buildFacialMorphTargets(
+  mergedGeo: THREE.BufferGeometry, rig: HumanoidRig, headGroupIdx: number, cavGroupIdx: number,
+  referenceGeo: THREE.BufferGeometry = mergedGeo, design: HeadDesign | null = null,
+): void {
   const posAttr = referenceGeo.attributes.position;
   const editedPos = mergedGeo.attributes.position;
   const normAttr = mergedGeo.attributes.normal;
 
   const headGroup = mergedGeo.groups[headGroupIdx];
-  const idxAttr = mergedGeo.index;
+  const idxAttr = mergedGeo.index!;
   const headVertSet = new Set<number>();
   for (let i = headGroup.start; i < headGroup.start + headGroup.count; i++) {
     headVertSet.add(idxAttr.getX(i));
@@ -31,7 +40,7 @@ export function buildFacialMorphTargets(mergedGeo, rig, headGroupIdx, cavGroupId
   const headScale = new THREE.Vector3(1, 1, 1);
   const cavityScale = new THREE.Vector3(1, 1, 1);
   for (const target of ["all", "skin"]) {
-    const t = design?.transforms[target];
+    const t = design?.transforms[target as HeadTarget];
     if (t) headScale.multiply(new THREE.Vector3(t.sx ?? 1, t.sy ?? 1, t.sz ?? 1));
   }
   cavityScale.copy(headScale);

@@ -1,3 +1,4 @@
+import type * as THREE from "three";
 import { SIDES } from "../../shared/sides.js";
 import type { HumanoidRig } from "./types.js";
 
@@ -8,7 +9,7 @@ import type { HumanoidRig } from "./types.js";
  */
 export function createTwistHelpers(rig: HumanoidRig) {
   const bm = rig.boneMap;
-  const forearmTwistAxes = Object.fromEntries(SIDES.map(([side]) => [side,
+  const forearmTwistAxes: Record<string, THREE.Vector3> = Object.fromEntries(SIDES.map(([side]) => [side,
     rig.worldRest.get(`Hand_${side}`).clone().sub(rig.worldRest.get(`Forearm_${side}`)).normalize()]));
 
   /** Drive the helper bones from the current arm pose. Call after all arm/hand posing. */

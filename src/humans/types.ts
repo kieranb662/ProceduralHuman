@@ -80,6 +80,12 @@ export interface ProceduralCharacter {
    */
   setPalette(palette: Palette, options?: { rebuild?: boolean }): void;
 
+  /**
+   * Frees geometries, materials, textures and skeletons, stops the animation mixers and removes
+   * `root` from its parent. The character must not be used afterwards.
+   */
+  dispose(): void;
+
   readonly torsoDetails: TorsoDetails;
   setTorsoDetails(changes: TorsoDetailChanges): void;
   resetTorsoDetails(): void;

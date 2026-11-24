@@ -1,17 +1,19 @@
 import * as THREE from "three";
+import type { PackedWeights } from "../../../rigging/api/skin-weights.js";
 import { buildGeometryFromArrays, weldSeamNormals } from "./attributes.js";
+import type { LoftRing, TubeSegment } from "./types.js";
 
-export function loftRings(rings, capBottom = false, capTop = false) {
+export function loftRings(rings: LoftRing[], capBottom = false, capTop = false): THREE.BufferGeometry {
   const numRings = rings.length;
   const segs = rings[0].points.length;
   const stride = segs + 1;
 
-  const positions = [];
-  const uvs = [];
-  const colors = [];
-  const skinIdx = [];
-  const skinWgt = [];
-  const indices = [];
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const colors: number[] = [];
+  const skinIdx: number[] = [];
+  const skinWgt: number[] = [];
+  const indices: number[] = [];
 
   for (let r = 0; r < numRings; r++) {
     const ring = rings[r];
@@ -38,7 +40,7 @@ export function loftRings(rings, capBottom = false, capTop = false) {
     }
   }
 
-  const addCap = (ringIdx, flip) => {
+  const addCap = (ringIdx: number, flip: boolean) => {
     const ring = rings[ringIdx];
     const center = new THREE.Vector3();
     for (const p of ring.points) center.add(p);
@@ -65,8 +67,8 @@ export function loftRings(rings, capBottom = false, capTop = false) {
 }
 
 // --- 2B. Limb Chain Lofting Helper ---
-export function buildChainTube(segmentsDef, radSegs, capStart = true, capEnd = true) {
-  const rings = [];
+export function buildChainTube(segmentsDef: TubeSegment[], radSegs: number, capStart = true, capEnd = true): THREE.BufferGeometry {
+  const rings: LoftRing[] = [];
   const upRef = new THREE.Vector3(0, 0, 1);
 
   for (let i = 0; i < segmentsDef.length; i++) {
@@ -82,8 +84,8 @@ export function buildChainTube(segmentsDef, radSegs, capStart = true, capEnd = t
     sideA.normalize();
     const sideB = new THREE.Vector3().crossVectors(tangent, sideA).normalize();
 
-    const pts = [];
-    const wgts = [];
+    const pts: THREE.Vector3[] = [];
+    const wgts: PackedWeights[] = [];
     for (let s = 0; s < radSegs; s++) {
       const a = (s / radSegs) * Math.PI * 2;
       const ca = Math.cos(a), sa = Math.sin(a);

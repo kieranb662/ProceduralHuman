@@ -27,7 +27,7 @@ export class PhSegmented extends PhElement {
   attributeChangedCallback(name: string) {
     if (name === "columns") this.style.setProperty("--ph-columns", this.getAttribute("columns"));
     if (name === "label") this.grid.setAttribute("aria-label", this.getAttribute("label") ?? "");
-    if (name === "value") this.value = this.getAttribute("value");
+    if (name === "value") this.value = this.getAttribute("value") ?? "";
   }
 
   set options(options: SegmentOption[]) {

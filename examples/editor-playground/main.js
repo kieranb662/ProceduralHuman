@@ -1,11 +1,14 @@
 // Minimal integration of the published APIs: a character, the studio lighting rig and every editor element.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createHuman, createStudioLighting } from "@kieranb662/procedural-human";
+import { createHuman, createParkMillerRng, createStudioLighting } from "@kieranb662/procedural-human";
 import { defaultAdultMale } from "@kieranb662/procedural-human/humans";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
 
 registerEditorElements();
+
+// ?test freezes time and randomness so visual tests are deterministic.
+const testMode = new URLSearchParams(location.search).has("test");
 
 const container = document.getElementById("viewport");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -57,9 +60,10 @@ new ResizeObserver(resize).observe(container);
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  character.update(dt, { autoBlink: animationEditor.autoBlink, autoGaze: animationEditor.autoGaze, reachTarget });
+  const dt = testMode ? 0 : Math.min(clock.getDelta(), 0.05);
+  character.update(dt, { autoBlink: !testMode && animationEditor.autoBlink, autoGaze: !testMode && animationEditor.autoGaze, reachTarget });
   controls.update();
   renderer.render(scene, camera);
+  window.__phReady = true;
 });
 window.playground = { character, lighting, scene };

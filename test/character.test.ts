@@ -1,3 +1,4 @@
+import type * as THREE_T from "three";
 import { describe, expect, it } from "vitest";
 import {
   FACS_MORPH_NAMES,
@@ -55,5 +56,31 @@ describe("createAdultMaleCharacter (headless)", () => {
     expect(character.clothingSlots.torso.item).toBe("shirt");
     expect(Object.keys(character.clips)).toHaveLength(14);
     character.update(1 / 60, { autoBlink: true, autoGaze: true });
+  });
+});
+
+describe("dispose()", () => {
+  it("frees geometry, materials, textures and skeleton and detaches the root", async () => {
+    const THREE = await import("three");
+    const character = createAdultMaleCharacter({ createCanvas: stubCanvas, outfit: { torso: "shirt" } });
+    const scene = new THREE.Scene();
+    scene.add(character.root);
+    const disposed = new Set<string>();
+    const track = (target: { addEventListener: Function }, label: string) =>
+      target.addEventListener("dispose", () => disposed.add(label));
+    track(character.skinnedMesh.geometry, "body geometry");
+    track(character.clothingSlots.torso.mesh!.geometry, "shirt geometry");
+    const materials = character.skinnedMesh.material as THREE_T.MeshPhysicalMaterial[];
+    track(materials[0], "skin material");
+    track(materials[0].map!, "skin texture");
+    character.setBaseAnimation("walking");
+    character.update(1 / 60);
+
+    character.dispose();
+    character.dispose(); // idempotent
+
+    expect([...disposed].sort()).toEqual(["body geometry", "shirt geometry", "skin material", "skin texture"]);
+    expect(character.root.parent).toBeNull();
+    expect(character.mixers.base.existingAction(character.clips.walking)).toBeNull();
   });
 });

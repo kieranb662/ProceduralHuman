@@ -15,14 +15,15 @@ export const defaultCanvasFactory: CanvasFactory = (size) => {
 };
 
 /** A canvas plus its 2D context and a writable ImageData buffer. */
-export const mk = (S, createCanvas: CanvasFactory = defaultCanvasFactory) => {
+export interface CanvasBuffer { c: TextureCanvas; x: CanvasRenderingContext2D; img: ImageData }
+export const mk = (S: number, createCanvas: CanvasFactory = defaultCanvasFactory) => {
   const c = createCanvas(S);
   const x = c.getContext("2d") as CanvasRenderingContext2D;
-  return { c, x, img: x.createImageData(S, S) };
+  return { c, x, img: x.createImageData(S, S) } as CanvasBuffer;
 };
 
 /** Uploads a canvas buffer into a repeating THREE.CanvasTexture. */
-export const finish = (o, srgb, rep, mirror = false) => {
+export const finish = (o: CanvasBuffer, srgb: boolean, rep: readonly [number, number] | number[], mirror = false) => {
   o.x.putImageData(o.img, 0, 0);
   const t = new THREE.CanvasTexture(o.c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;

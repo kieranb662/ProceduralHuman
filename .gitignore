@@ -4,3 +4,5 @@ dist-demo/
 coverage/
 *.log
 test/.tmp/
+test-results/
+playwright-report/

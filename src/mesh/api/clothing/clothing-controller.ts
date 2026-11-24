@@ -19,11 +19,12 @@ export function createClothingController(rig: HumanoidRig, skinnedMesh: THREE.Sk
   root.name = "ClothingSlots";
   const slots = Object.fromEntries(Object.entries(CLOTHING_ITEMS).map(([name, items]) =>
     [name, { items: { ...items }, item: "none", mesh: null }])) as unknown as Record<ClothingSlot, ClothingSlotState>;
-  const baseBodyIndices = skinnedMesh.geometry.index.array.slice(0, bodyParts.reduce((sum, part) => sum + part.geo.index.count, 0));
+  const baseBodyIndices = skinnedMesh.geometry.index!.array.slice(0, bodyParts.reduce((sum, part) => sum + part.geo.index!.count, 0));
+  const materials = () => skinnedMesh.material as THREE.Material[];
 
   /** Re-applies triangle coverage for the worn garments to the body's current index buffer. */
   function updateCoverage() {
-    const index = skinnedMesh.geometry.index;
+    const index = skinnedMesh.geometry.index!;
     index.array.set(baseBodyIndices);
     for (const slot of Object.values(slots)) {
       if (!slot.mesh) continue;
@@ -36,7 +37,7 @@ export function createClothingController(rig: HumanoidRig, skinnedMesh: THREE.Sk
   }
 
   const validate = (slot: string, item: string) => {
-    if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot], item)) {
+    if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot as ClothingSlot], item)) {
       throw new Error(`Unknown clothing item ${slot}: ${item}.`);
     }
   };
@@ -47,10 +48,10 @@ export function createClothingController(rig: HumanoidRig, skinnedMesh: THREE.Sk
     if (slot.item === item) return;
     let mesh = null;
     if (item !== "none") {
-      const geo = buildClothingGeometry(bodyParts, slotName, item);
+      const geo = buildClothingGeometry(bodyParts, slotName, item as string);
       const materialIndex = slotName === "legs" ? 2 : slotName === "feet" ? 7 : 1;
       geo.userData.materialIndex = materialIndex;
-      mesh = new THREE.SkinnedMesh(geo, skinnedMesh.material[materialIndex]);
+      mesh = new THREE.SkinnedMesh(geo, materials()[materialIndex]);
       mesh.name = `Clothing_${slotName}_${String(item)}`;
       mesh.castShadow = mesh.receiveShadow = true;
       mesh.frustumCulled = false;
@@ -69,13 +70,13 @@ export function createClothingController(rig: HumanoidRig, skinnedMesh: THREE.Sk
 
   function setOutfit(outfit: Outfit = {}) {
     for (const [slot, item] of Object.entries(outfit)) validate(slot, item);
-    for (const slot of Object.keys(slots)) setClothing(slot as ClothingSlot, outfit[slot] ?? "none");
+    for (const slot of Object.keys(slots) as ClothingSlot[]) setClothing(slot, (outfit[slot] ?? "none") as ClothingItem<typeof slot>);
   }
 
   /** Re-points garments at skinnedMesh.material after the materials are replaced. */
   function refreshMaterials() {
     for (const slot of Object.values(slots)) {
-      if (slot.mesh) slot.mesh.material = skinnedMesh.material[slot.mesh.geometry.userData.materialIndex];
+      if (slot.mesh) slot.mesh.material = materials()[slot.mesh.geometry.userData.materialIndex as number];
     }
   }
 
@@ -96,7 +97,19 @@ export function createClothingController(rig: HumanoidRig, skinnedMesh: THREE.Sk
     }
   }
 
-  return { root, slots, setClothing, setOutfit, refreshMaterials, refit, rebind, updateCoverage };
+  /** Removes and frees every garment (materials are owned by the body). */
+  function dispose() {
+    for (const slot of Object.values(slots)) {
+      if (!slot.mesh) continue;
+      slot.mesh.removeFromParent();
+      slot.mesh.geometry.dispose();
+      slot.mesh = null;
+      slot.item = "none";
+    }
+    root.removeFromParent();
+  }
+
+  return { root, slots, setClothing, setOutfit, refreshMaterials, refit, rebind, updateCoverage, dispose };
 }
 
 export type ClothingController = ReturnType<typeof createClothingController>;

@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { handLayout } from "../../../rigging/api/hand-layout.js";
+import type { TextureSettings } from "../../../textures/api/settings.js";
 
 /**
  * Patches a physical material with rest-space triplanar skin detail, region tone masks,
  * palm creases, nostril shading and wrap/transmission scattering.
  * Relies on three's built-in shader chunks: keep the supported three range narrow.
  */
-export function applySkinMapping(material, textureSettings) {
+export function applySkinMapping(material: THREE.Material, textureSettings: TextureSettings): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.skinTileSize = { value: textureSettings.skinTileSize };
     shader.uniforms.skinDetail = { value: textureSettings.skinDetail };
@@ -112,7 +113,7 @@ float handCreases(vec3 p) {
   float palmLines = region * max(head, max(heart, life * 0.7));
   float fingerLines = 0.0;
   for (int i = 0; i < 4; i++) {
-${["spread", "base", "L"].map((k) => `    float ${k === "L" ? "len" : k} = ${handLayout(1).fingers.map((f) => f[k].toFixed(4))
+${(["spread", "base", "L"] as const).map((k) => `    float ${k === "L" ? "len" : k} = ${handLayout(1).fingers.map((f) => f[k].toFixed(4))
     .reduceRight((rest, v, i) => i === 3 ? v : `(i == ${i} ? ${v} : ${rest})`)};`).join("\n")}
     float lateral = v - spread - (u - base) * spread * 1.2;
     float digitMask = (1.0 - smoothstep(0.006, 0.009, abs(lateral))) * smoothstep(base, base + 0.008, u);

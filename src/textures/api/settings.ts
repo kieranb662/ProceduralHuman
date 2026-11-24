@@ -15,7 +15,7 @@ export function resolveTextureSettings(overrides: Partial<TextureSettings> = {})
   if (!Number.isFinite(textureSettings.skinTileSize) || textureSettings.skinTileSize <= 0) {
     throw new RangeError("palette.textures.skinTileSize must be a positive finite size in meters.");
   }
-  for (const [key, min, max] of [
+  for (const [key, min, max] of <[keyof TextureSettings, number, number][]>[
     ["skinPoreDepth", 0, 2], ["skinScattering", 0, 1], ["skinThicknessScale", 0.25, 4],
   ]) {
     if (!Number.isFinite(textureSettings[key]) || textureSettings[key] < min || textureSettings[key] > max) {

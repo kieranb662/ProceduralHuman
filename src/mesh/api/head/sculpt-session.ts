@@ -85,12 +85,12 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
   function end() {
     if (!active) return;
     endStroke();
-    preview.parts.design = structuredClone(design);
-    character.commitHeadPreview(preview);
+    preview!.parts.design = structuredClone(design);
+    character.commitHeadPreview(preview!);
     active = false;
     character.skinnedMesh.visible = true;
     character.clothingRoot.visible = true;
-    previewMesh.removeFromParent();
+    previewMesh!.removeFromParent();
     disposePreview(preview);
     preview = previewMesh = null;
   }
@@ -120,7 +120,7 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
     endStroke();
     if (!from.length) return false;
     to.push(structuredClone(design));
-    design = from.pop();
+    design = from.pop()!;
     if (active) rebuildPreview();
     return true;
   }
@@ -145,12 +145,12 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
     if (!previewMesh) return null;
     const tags = headTargetTags(target);
     const hit = raycaster.intersectObject(previewMesh).find((h) => {
-      const index = h.faceIndex * 3;
-      return preview.ranges.some((range) => tags.includes(range.part.tag) &&
+      const index = (h.faceIndex ?? 0) * 3;
+      return preview!.ranges.some((range) => tags.includes(range.part.tag) &&
         index >= range.indexStart && index < range.indexStart + range.indexCount);
     });
     if (!hit) return null;
-    const normal = (hit.normal ?? hit.face.normal).clone();
+    const normal = (hit.normal ?? hit.face!.normal).clone();
     return {
       point: previewMesh.worldToLocal(hit.point.clone()),
       normal,
@@ -160,19 +160,20 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
   }
 
   function syncPreviewVertices() {
-    const pos = preview.geometry.attributes.position;
-    const normals = preview.geometry.attributes.normal;
-    const tags = new Set([...headTargetTags(gesture.target), "cavity"]);
-    for (const range of preview.ranges) {
+    const p = preview!, target = gesture!.target;
+    const pos = p.geometry.attributes.position;
+    const normals = p.geometry.attributes.normal;
+    const tags = new Set([...headTargetTags(target), "cavity"]);
+    for (const range of p.ranges) {
       if (!tags.has(range.part.tag)) continue;
       updateHeadPartNormals(range.part);
       (pos.array as Float32Array).set(range.part.geo.attributes.position.array, range.offset * 3);
       (normals.array as Float32Array).set(range.part.geo.attributes.normal.array, range.offset * 3);
     }
-    restoreNeckJoinNormals(preview.geometry);
+    restoreNeckJoinNormals(p.geometry);
     pos.needsUpdate = normals.needsUpdate = true;
-    preview.geometry.computeBoundingSphere();
-    preview.geometry.computeBoundingBox();
+    p.geometry.computeBoundingSphere();
+    p.geometry.computeBoundingBox();
   }
 
   /** Starts a brush stroke at `hit`. `viewDirection` orients the drag plane of the move brush. */
@@ -199,8 +200,8 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
     if (gesture.mode === "move") {
       const point = raycaster.ray.intersectPlane(gesture.plane, new THREE.Vector3());
       if (!point) return false;
-      delta = previewMesh.worldToLocal(point.clone())
-        .sub(previewMesh.worldToLocal(gesture.lastPlanePoint.clone())).multiplyScalar(strength);
+      delta = previewMesh!.worldToLocal(point.clone())
+        .sub(previewMesh!.worldToLocal(gesture.lastPlanePoint.clone())).multiplyScalar(strength);
       gesture.lastPlanePoint.copy(point);
       if (delta.lengthSq() < 1e-12) return false;
       center = gesture.center.clone();
@@ -218,7 +219,7 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
       target: gesture.target, mode: gesture.mode, center: center.toArray(), delta: delta.toArray(),
       radius: gesture.radius, strength, mirror: gesture.mirror, mirrorX: gesture.mirrorX,
     };
-    if (!applyHeadSculptStroke(preview.parts, stroke)) return false;
+    if (!applyHeadSculptStroke(preview!.parts, stroke)) return false;
     if (!gesture.changed) { remember(); gesture.changed = true; }
     design.strokes.push(stroke);
     syncPreviewVertices();

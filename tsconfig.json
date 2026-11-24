@@ -8,8 +8,7 @@
       "DOM",
       "DOM.Iterable"
     ],
-    "strict": false,
-    "allowJs": true,
+    "strict": true,
     "checkJs": false,
     "declaration": true,
     "isolatedModules": true,

@@ -52,3 +52,8 @@ export function h(tag: string, attrs: Record<string, string | boolean | number |
   el.append(...children);
   return el;
 }
+
+/** Adds a listener for a CustomEvent and hands it the typed `detail` (and the event). */
+export function onDetail<D>(target: EventTarget, type: string, listener: (detail: D, event: CustomEvent<D>) => void): void {
+  target.addEventListener(type, (event) => listener((event as CustomEvent<D>).detail, event as CustomEvent<D>));
+}

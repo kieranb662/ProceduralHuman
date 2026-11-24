@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 
-export function ensureUniformAttributes(rawGeo) {
+export function ensureUniformAttributes(rawGeo: THREE.BufferGeometry): THREE.BufferGeometry {
   const geo = rawGeo.index ? rawGeo : BufferGeometryUtils.mergeVertices(rawGeo);
   const count = geo.attributes.position.count;
   if (!geo.attributes.normal) geo.computeVertexNormals();
@@ -19,7 +19,9 @@ export function ensureUniformAttributes(rawGeo) {
   return geo;
 }
 
-export function buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, indices) {
+export function buildGeometryFromArrays(
+  positions: number[], uvs: number[], colors: number[], skinIdx: number[], skinWgt: number[], indices: number[],
+): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
@@ -31,9 +33,9 @@ export function buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt
   return geo;
 }
 
-export function weldSeamNormals(geo, numRings, segs) {
+export function weldSeamNormals(geo: THREE.BufferGeometry, numRings: number, segs: number): void {
   const stride = segs + 1;
-  const nAttr = geo.attributes.normal;
+  const nAttr = geo.attributes.normal as THREE.BufferAttribute;
   const n0 = new THREE.Vector3();
   const n1 = new THREE.Vector3();
   for (let r = 0; r < numRings; r++) {

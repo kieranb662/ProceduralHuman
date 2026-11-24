@@ -1,5 +1,5 @@
 import type * as THREE from "three";
-import type { HumanoidRig } from "../../rigging/api/types.js";
+import type { HumanoidRig, KeyedMap } from "../../rigging/api/types.js";
 import { SIDES } from "../../shared/sides.js";
 import { HAND_GESTURES, handPoseQuaternions, type HandGesture } from "./hand-gestures.js";
 
@@ -10,8 +10,8 @@ import { HAND_GESTURES, handPoseQuaternions, type HandGesture } from "./hand-ges
 export function createHandPoseLayer(rig: HumanoidRig) {
   const bm = rig.boneMap;
   const handGestures: { L: HandGesture; R: HandGesture } = { L: "auto", R: "auto" };
-  const currentHandQuats = new Map<string, THREE.Quaternion>();
-  const openThumbQuats = { L: handPoseQuaternions("L", HAND_GESTURES.open), R: handPoseQuaternions("R", HAND_GESTURES.open) };
+  const currentHandQuats = new Map<string, THREE.Quaternion>() as KeyedMap<THREE.Quaternion>;
+  const openThumbQuats: Record<"L" | "R", Map<string, THREE.Quaternion>> = { L: handPoseQuaternions("L", HAND_GESTURES.open), R: handPoseQuaternions("R", HAND_GESTURES.open) };
   for (const [side] of SIDES) {
     for (const [name, q] of handPoseQuaternions(side, HAND_GESTURES.relaxed)) {
       bm.get(name).quaternion.copy(q);
@@ -22,7 +22,7 @@ export function createHandPoseLayer(rig: HumanoidRig) {
   function setHandGesture(name: HandGesture, side: "both" | "L" | "R" = "both") {
     if (name !== "auto" && !Object.hasOwn(HAND_GESTURES, name)) throw new Error(`Unknown hand gesture: ${name}.`);
     if (!["both", "L", "R"].includes(side)) throw new Error(`Unknown hand side: ${side}.`);
-    for (const key of side === "both" ? ["L", "R"] : [side]) handGestures[key] = name;
+    for (const key of side === "both" ? ["L", "R"] as const : [side]) handGestures[key] = name;
   }
 
   /** Eases fingers toward their gestures. `upperBlend` > 0 lets an upper-body clip drive the auto right hand. */
@@ -39,7 +39,7 @@ export function createHandPoseLayer(rig: HumanoidRig) {
       const k = 1 - Math.exp(-14 * dt);
       for (const [name, q] of target) {
         const bone = bm.get(name), current = currentHandQuats.get(name);
-        const goal = overlay ? bone.quaternion : clearThumb && name.startsWith("Thumb") ? openThumbQuats[side].get(name) : q;
+        const goal = overlay ? bone.quaternion : clearThumb && name.startsWith("Thumb") ? openThumbQuats[side].get(name)! : q;
         current.slerp(goal, k);
         bone.quaternion.copy(current);
       }

@@ -7,6 +7,9 @@ import type { NumericParameter } from "../../shared/parameters.js";
 /** One numeric parameter rendered as a ph-slider (see NumericParameter). */
 export type ParameterDef = NumericParameter;
 
+/** Detail of the `input` / `change` events: the parameter key and its value in stored units. */
+export interface ParameterEventDetail<K extends string = string> { key: K; value: number }
+
 /**
  * A column of ph-slider controls generated from parameter definitions.
  * Set `el.parameters` and `el.values`; emits `input` while dragging and `change` on release,

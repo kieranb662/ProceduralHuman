@@ -1,6 +1,9 @@
-// --- 2. Geometry & Analytical Skinning Helpers ---
-export function normalizeAndPackWeights(pairs) {
-  const map = new Map();
+/** Up to 4 bone influences per vertex, as stored in the skinIndex / skinWeight attributes. */
+export interface PackedWeights { indices: number[]; weights: number[] }
+
+/** Keeps the 4 strongest bone influences, merged per bone and normalized to sum to 1. */
+export function normalizeAndPackWeights(pairs: Iterable<readonly number[]>): PackedWeights {
+  const map = new Map<number, number>();
   for (const [idx, w] of pairs) {
     if (w <= 1e-6) continue;
     map.set(idx, (map.get(idx) ?? 0) + w);

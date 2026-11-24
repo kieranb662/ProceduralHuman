@@ -1,9 +1,9 @@
 import { rgb } from "../../shared/color.js";
-import { defaultCanvasFactory, finish, mk } from "./canvas.js";
+import { type CanvasFactory, defaultCanvasFactory, finish, mk } from "./canvas.js";
 import { fbm } from "./noise.js";
 
 // Fabric: plain weave threads with fuzz + bump
-export function makeWeaveTextures(hex, contrast, repeat, createCanvas = defaultCanvasFactory) {
+export function makeWeaveTextures(hex: string, contrast: number, repeat: [number, number], createCanvas: CanvasFactory = defaultCanvasFactory) {
   const S = 256, col = mk(S, createCanvas), bmp = mk(S, createCanvas), [R, G, B] = rgb(hex);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {

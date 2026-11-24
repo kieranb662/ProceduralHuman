@@ -1,9 +1,10 @@
+import type { TextureSettings } from "./settings.js";
 import { rgb } from "../../shared/color.js";
-import { defaultCanvasFactory, finish, mk } from "./canvas.js";
+import { type CanvasFactory, defaultCanvasFactory, finish, mk } from "./canvas.js";
 import { fbm, hash2 } from "./noise.js";
 
 // Only microdetail tiles; broad tone variation is evaluated in rest-space below.
-export function makeSkinTextures(hex, textureSettings, createCanvas = defaultCanvasFactory) {
+export function makeSkinTextures(hex: string, textureSettings: TextureSettings, createCanvas: CanvasFactory = defaultCanvasFactory) {
   const S = 1024, col = mk(S, createCanvas), bmp = mk(S, createCanvas), [R, G, B] = rgb(hex);
   const poreHeight = new Float32Array(S * S);
   const cells = 112;

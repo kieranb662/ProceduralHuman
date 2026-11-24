@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RIGHT_ARM_BONES } from "../../rigging/api/bone-names.js";
 import type { RestPose } from "../../rigging/api/rest-pose.js";
-import type { HumanoidRig } from "../../rigging/api/types.js";
+import type { HumanoidRig, KeyedMap } from "../../rigging/api/types.js";
 import {
   BASE_ANIMATIONS, FACE_EXPRESSIONS, UPPER_ANIMATIONS,
   type BaseAnimation, type ClipName, type FaceExpression, type FaceExpressionClip,
@@ -45,7 +45,7 @@ export function createAnimationLayers(
   baseActions.idle.play();
 
   let upperBlend = 0;
-  const baseArmQuats = new Map<string, THREE.Quaternion>();
+  const baseArmQuats = new Map<string, THREE.Quaternion>() as KeyedMap<THREE.Quaternion>;
   for (const name of RIGHT_ARM_BONES) baseArmQuats.set(name, new THREE.Quaternion());
 
   function setBaseAnimation(name: BaseAnimation) {
@@ -57,16 +57,19 @@ export function createAnimationLayers(
     activeBase = name;
   }
 
+  // "none" and "reaching" are layer states without a clip.
+  const upperLookup = upperActions as Partial<Record<UpperAnimation, THREE.AnimationAction>>;
+
   function setUpperAnimation(name: UpperAnimation) {
     if (name === activeUpper) return;
-    if (upperActions[name]) {
+    if (upperLookup[name]) {
       if (activeUpperClip && activeUpperClip !== name && upperActions[activeUpperClip]) {
         const prev = upperActions[activeUpperClip];
-        const next = upperActions[name];
+        const next = upperLookup[name]!;
         next.reset().setEffectiveWeight(1).play();
         prev.crossFadeTo(next, 0.2, false);
       } else {
-        upperActions[name].reset().setEffectiveWeight(1).play();
+        upperLookup[name]!.reset().setEffectiveWeight(1).play();
       }
       activeUpperClip = name as UpperAnimationClip;
     }
@@ -150,15 +153,24 @@ export function createAnimationLayers(
     return () => {
       for (const name of FACE_EXPRESSIONS) faceActions[name] = faceMixer.clipAction(clips[name]);
       faceActions.blinking.setLoop(THREE.LoopOnce, 1);
-      for (const name of [activeFace, ...(resumeBlink ? ["blinking"] : [])]) {
-        if (name === "neutral") continue;
-        faceActions[name].reset().setEffectiveWeight(1).play();
-        faceActions[name].time = faceTimes[name];
+      for (const state of [activeFace, ...(resumeBlink ? ["blinking"] : [])] as FaceExpression[]) {
+        if (state === "neutral") continue;
+        faceActions[state].reset().setEffectiveWeight(1).play();
+        faceActions[state].time = faceTimes[state]!;
       }
     };
   }
 
+  /** Stops every action and releases the cached mixer bindings. */
+  function dispose() {
+    for (const mixer of [baseMixer, upperMixer, faceMixer]) {
+      mixer.stopAllAction();
+      mixer.uncacheRoot(skinnedMesh);
+    }
+  }
+
   return {
+    dispose,
     mixers: { base: baseMixer, upper: upperMixer, face: faceMixer },
     setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink,
     updateBase, updateUpper, updateFace, suspendFace,

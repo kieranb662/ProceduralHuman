@@ -1,19 +1,19 @@
 import * as THREE from "three";
 import type { ProceduralCharacter } from "../../humans/types.js";
-import type { EditorViewport } from "../../shared/viewport.js";
-import { defineElement, h } from "../../ui/api/element.js";
+import type { EditorViewport, ViewportControls } from "../../shared/viewport.js";
+import { defineElement, h, onDetail } from "../../ui/api/element.js";
 import type { PhButton } from "../../ui/api/button.js";
 import type { PhSelect } from "../../ui/api/select.js";
 import type { PhSlider } from "../../ui/api/slider.js";
 import type { PhStatus } from "../../ui/api/status.js";
 import type { PhToggle } from "../../ui/api/toggle.js";
 import { PhEditorElement } from "../../ui/editor/editor-element.js";
-import type { PhParameterGroup } from "../../ui/editor/parameter-group.js";
+import type { ParameterEventDetail, PhParameterGroup } from "../../ui/editor/parameter-group.js";
 import {
   HEAD_BRUSH_LABELS, HEAD_FEATURE_PARAMETERS, HEAD_TARGET_LABELS, HEAD_TRANSFORM_PARAMETERS,
 } from "../api/head/parameters.js";
 import { createHeadSculptSession, type HeadHit, type HeadSculptSession } from "../api/head/sculpt-session.js";
-import type { HeadBrushMode, HeadDesign, HeadTarget } from "../api/head/types.js";
+import type { HeadBrushMode, HeadDesign, HeadFeature, HeadTarget, HeadTransform } from "../api/head/types.js";
 
 const HEAD_VIEWS = {
   front: [0, 1.662, 0.56], left: [0.46, 1.662, 0.22], right: [-0.46, 1.662, 0.22],
@@ -35,7 +35,7 @@ export interface HeadEditingDetail { active: boolean }
 export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private session: HeadSculptSession | null = null;
   private view: EditorViewport | null = null;
-  private savedView: { position: THREE.Vector3; target: THREE.Vector3; buttons: EditorViewport["controls"]["mouseButtons"] } | null = null;
+  private savedView: { position: THREE.Vector3; target: THREE.Vector3; buttons: ViewportControls["mouseButtons"] } | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly cursor = createBrushCursor();
@@ -45,9 +45,20 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private strokePointerId: number | null = null;
   private sliderGesture = false;
 
+  /** The bound sculpt session (set with `character`). */
+  private get sess(): HeadSculptSession {
+    if (!this.session) throw new Error("ph-head-editor: set .character first.");
+    return this.session;
+  }
+  /** The bound viewport (set with `viewport`). */
+  private get vp(): EditorViewport {
+    if (!this.view) throw new Error("ph-head-editor: set .viewport first.");
+    return this.view;
+  }
+
   private readonly toggle = h("ph-toggle", { label: "Edit neutral head in the canvas" }) as PhToggle;
   private readonly partSelect = h("ph-select", { label: "Part to adjust / sculpt", stacked: true }) as PhSelect;
-  private readonly brush = h("ph-select", { label: "Canvas brush", stacked: true }) as PhSelect;
+  private readonly brush = h("ph-select", { label: "Brush" }) as PhSelect;
   private readonly radius = h("ph-slider", { label: "Radius", min: 3, max: 60, step: 1, value: 15, decimals: 0, unit: " mm" }) as PhSlider;
   private readonly strength = h("ph-slider", { label: "Strength", min: 0.05, max: 1, step: 0.05, value: 0.4 }) as PhSlider;
   private readonly mirror = h("ph-toggle", { label: "Mirror across the face center", checked: true }) as PhToggle;
@@ -80,7 +91,7 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     const canvas = viewport.renderer.domElement;
     canvas.addEventListener("pointerdown", this.onPointerDown, true);
     canvas.addEventListener("pointermove", this.onPointerMove, true);
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) canvas.addEventListener(type, this.onPointerEnd, true);
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.addEventListener(type, this.onPointerEnd, true);
     canvas.addEventListener("pointerleave", this.onPointerLeave);
   }
 
@@ -97,6 +108,10 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   disconnectedCallback() {
     window.removeEventListener("blur", this.onBlur);
     document.removeEventListener("keydown", this.onKeyDown);
+    // Leaving the page commits any open session and releases the viewport hooks.
+    this.guard(() => this.setEditing(false));
+    this.detachViewport();
+    this.view = null;
   }
 
   render() {
@@ -109,7 +124,7 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     reset.addEventListener("click", () => this.guard(() => {
       this.finishStroke();
       this.setEditing(true);
-      this.session.reset();
+      this.sess.reset();
       this.afterDesignChange();
     }));
     this.clear();
@@ -191,18 +206,19 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     this.partSelect.addEventListener("change", () => { this.finishStroke(); this.showDesignControls(); this.cursor.visible = false; });
     this.brush.addEventListener("change", () => {
       this.finishStroke();
-      if (this.editing && this.view?.controls) this.view.controls.mouseButtons.LEFT = this.brushMode === "orbit" ? THREE.MOUSE.ROTATE : null;
+      const controls = this.view?.controls;
+      if (this.editing && controls) controls.mouseButtons.LEFT = this.brushMode === "orbit" ? THREE.MOUSE.ROTATE : null;
       this.updateCanvasCursor();
       this.cursor.visible = false;
     });
-    this.transforms.addEventListener("input", (e: CustomEvent) => this.guard(() => {
+    onDetail<ParameterEventDetail>(this.transforms, "input", (_detail, e) => this.guard(() => {
       this.beginSlider();
-      this.session.setTransform(this.headPart, e.detail.key, e.detail.value);
+      this.sess.setTransform(this.headPart, e.detail.key as keyof HeadTransform, e.detail.value);
       this.scheduleRebuild();
     }));
-    this.features.addEventListener("input", (e: CustomEvent) => this.guard(() => {
+    onDetail<ParameterEventDetail>(this.features, "input", (_detail, e) => this.guard(() => {
       this.beginSlider();
-      this.session.setFeature(e.detail.key, e.detail.value);
+      this.sess.setFeature(e.detail.key as HeadFeature, e.detail.value);
       this.scheduleRebuild();
     }));
     for (const group of [this.transforms, this.features]) {
@@ -215,16 +231,16 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private beginSlider() {
     this.setEditing(true);
     this.finishStroke();
-    if (!this.sliderGesture) this.session.remember();
+    if (!this.sliderGesture) this.sess.remember();
     this.sliderGesture = true;
   }
 
   private history(direction: "undo" | "redo") {
     this.finishStroke();
     this.sliderGesture = false;
-    if (!(direction === "undo" ? this.session.canUndo : this.session.canRedo)) return;
+    if (!(direction === "undo" ? this.sess.canUndo : this.sess.canRedo)) return;
     this.setEditing(true);
-    this.session[direction]();
+    this.sess[direction]();
     this.afterDesignChange();
   }
 
@@ -257,14 +273,14 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private rebuildNow() {
     if (this.rebuildFrame !== null) cancelAnimationFrame(this.rebuildFrame);
     this.rebuildFrame = null;
-    this.session.rebuildPreview();
+    this.sess.rebuildPreview();
   }
 
   // --- persistence ---------------------------------------------------------------------------
 
   private save() {
     const key = this.getAttribute("storage-key");
-    const design = this.session.design;
+    const design = this.sess.design;
     if (!key) {
       this.status.message = `${design.strokes.length} procedural brush dabs.`;
       return;
@@ -283,7 +299,7 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     try {
       const stored = localStorage.getItem(key);
       if (!stored) return;
-      this.session.load(JSON.parse(stored));
+      this.sess.load(JSON.parse(stored));
       this.status.message = "Previous head edits restored from this browser.";
       this.changed("head", { committed: true });
     } catch (error) {
@@ -295,19 +311,19 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   // --- canvas sculpting ----------------------------------------------------------------------
 
   private updateCanvasCursor() {
-    if (this.view) this.view.renderer.domElement.style.cursor = this.editing && this.brushMode !== "orbit" ? "crosshair" : "";
+    if (this.view) this.vp.renderer.domElement.style.cursor = this.editing && this.brushMode !== "orbit" ? "crosshair" : "";
   }
 
   private aim(event: PointerEvent) {
-    const rect = this.view.renderer.domElement.getBoundingClientRect();
+    const rect = this.vp.renderer.domElement.getBoundingClientRect();
     this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
-    this.raycaster.setFromCamera(this.pointer, this.view.camera);
+    this.raycaster.setFromCamera(this.pointer, this.vp.camera);
   }
 
   /** Aims at the pointer and places the brush cursor on the selected part. */
   private pick(event: PointerEvent): HeadHit | null {
     this.aim(event);
-    const hit = this.session.pick(this.raycaster, this.headPart);
+    const hit = this.sess.pick(this.raycaster, this.headPart);
     if (!hit) { this.cursor.visible = false; return null; }
     this.cursor.position.copy(hit.worldPoint).addScaledVector(hit.worldNormal, 0.0005);
     this.cursor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), hit.worldNormal);
@@ -317,8 +333,8 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   }
 
   private sculpt(event: PointerEvent, initial = false) {
-    if (!this.session.stroking) return;
-    if (this.session.strokeTo((this.pick(event), this.raycaster), event.shiftKey, initial)) this.updateHistoryButtons();
+    if (!this.sess.stroking) return;
+    if (this.sess.strokeTo((this.pick(event), this.raycaster), event.shiftKey, initial)) this.updateHistoryButtons();
   }
 
   private finishStroke() {
@@ -328,32 +344,33 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     if (this.pendingPointer) this.sculpt(this.pendingPointer);
     this.pendingPointer = null;
     const canvas = this.view?.renderer.domElement;
-    if (this.view?.controls) this.view.controls.enabled = true;
+    const controls = this.view?.controls;
+    if (controls) controls.enabled = true;
     if (canvas && this.strokePointerId !== null && canvas.hasPointerCapture(this.strokePointerId)) canvas.releasePointerCapture(this.strokePointerId);
     this.strokePointerId = null;
-    if (this.session.endStroke()) this.afterDesignChange(false);
+    if (this.sess.endStroke()) this.afterDesignChange(false);
   }
 
   private readonly onPointerDown = (event: PointerEvent) => {
-    if (!this.editing || this.brushMode === "orbit" || event.button !== 0 || this.session.stroking) return;
+    if (!this.editing || this.brushMode === "orbit" || event.button !== 0 || this.sess.stroking) return;
     if (this.rebuildFrame !== null) this.rebuildNow();
     const hit = this.pick(event);
     if (!hit) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (this.view.controls) this.view.controls.enabled = false;
-    this.session.beginStroke({
+    if (this.vp.controls) this.vp.controls.enabled = false;
+    this.sess.beginStroke({
       target: this.headPart, mode: this.brushMode as HeadBrushMode,
       radius: this.radius.value / 1000, strength: this.strength.value, mirror: this.mirror.checked,
-    }, hit, this.view.camera.getWorldDirection(new THREE.Vector3()));
+    }, hit, this.vp.camera.getWorldDirection(new THREE.Vector3()));
     this.strokePointerId = event.pointerId;
-    this.view.renderer.domElement.setPointerCapture(event.pointerId);
+    this.vp.renderer.domElement.setPointerCapture(event.pointerId);
     if (this.brushMode !== "move") this.sculpt(event, true);
   };
 
   private readonly onPointerMove = (event: PointerEvent) => {
     if (!this.editing) return;
-    if (!this.session.stroking) { if (event.buttons === 0) this.pick(event); return; }
+    if (!this.sess.stroking) { if (event.buttons === 0) this.pick(event); return; }
     if (event.pointerId !== this.strokePointerId) return;
     event.stopImmediatePropagation();
     this.pendingPointer = event;
@@ -362,7 +379,7 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
       this.pointerFrame = null;
       const pointer = this.pendingPointer;
       this.pendingPointer = null;
-      try { this.sculpt(pointer); } catch (error) { this.finishStroke(); this.report(error); }
+      try { if (pointer) this.sculpt(pointer); } catch (error) { this.finishStroke(); this.report(error); }
     });
   };
 
@@ -386,10 +403,10 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
 
   private detachViewport() {
     if (!this.view) return;
-    const canvas = this.view.renderer.domElement;
+    const canvas = this.vp.renderer.domElement;
     canvas.removeEventListener("pointerdown", this.onPointerDown, true);
     canvas.removeEventListener("pointermove", this.onPointerMove, true);
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) canvas.removeEventListener(type, this.onPointerEnd, true);
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) canvas.removeEventListener(type, this.onPointerEnd, true);
     canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.cursor.removeFromParent();
   }

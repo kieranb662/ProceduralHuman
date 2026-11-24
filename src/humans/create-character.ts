@@ -90,7 +90,7 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
     //    without this reset they accumulated forever on bones no clip animates (the spinning head).
     restPose.reset();
     if (opts.headEditor) {
-      skinnedMesh.morphTargetInfluences.fill(0);
+      skinnedMesh.morphTargetInfluences?.fill(0);
       root.updateMatrixWorld(true);
       return;
     }
@@ -107,7 +107,24 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
     faceRig.applySliders(gaze.x, gaze.y);
   }
 
+  let disposed = false;
+  /** Frees all GPU and CPU resources and detaches the character from its parent. */
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    layers.dispose();
+    clothing.dispose();
+    materialController.dispose();
+    skinnedMesh.geometry.dispose();
+    referenceGeometry.dispose();
+    for (const part of [...bodyParts, ...referenceHead, ...headParts]) part.geo.dispose();
+    rig.skeleton.dispose();
+    referenceRig.skeleton.dispose();
+    root.removeFromParent();
+  }
+
   return {
+    dispose,
     root, skinnedMesh, rig, clips, bodyParts,
     clothingRoot: clothing.root, clothingSlots: clothing.slots,
     mixers: layers.mixers,

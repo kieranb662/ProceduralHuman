@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { solveRightArmReachIK } from "./ik.js";
-import type { HumanoidRig } from "./types.js";
+import type { HumanoidRig, KeyedMap } from "./types.js";
 
 const IK_BLEND_BONES = ["Chest", "Clavicle_R", "UpperArm_R", "Forearm_R", "Hand_R"];
 
 /** Smoothly blended, post-mixer 2-bone IK that reaches the right hand toward a world target. */
 export function createReachIkLayer(rig: HumanoidRig, characterRoot: THREE.Object3D) {
   const bm = rig.boneMap;
-  const preIkQuats = new Map<string, THREE.Quaternion>();
+  const preIkQuats = new Map<string, THREE.Quaternion>() as KeyedMap<THREE.Quaternion>;
   for (const name of IK_BLEND_BONES) preIkQuats.set(name, new THREE.Quaternion());
   let reachBlend = 0;
 

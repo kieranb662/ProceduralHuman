@@ -1,19 +1,28 @@
 import { SIDES } from "../../../shared/sides.js";
 import * as THREE from "three";
+import type { PackedWeights } from "../../../rigging/api/skin-weights.js";
+import type { HumanoidRig } from "../../../rigging/api/types.js";
+import type { TubeSegment } from "../geometry/types.js";
+import type { MeshPart } from "../types.js";
+
+/** [center, rx, rz, weight] row of a limb tube definition. */
+type TubeRow = [THREE.Vector3, number, number, PackedWeights];
 import { buildJointedHand } from "./hand.js";
 import { buildGeometryFromArrays } from "../geometry/attributes.js";
 import { buildChainTube } from "../geometry/loft.js";
 import { normalizeAndPackWeights } from "../../../rigging/api/skin-weights.js";
 
 // Shared indices, not overlapping caps, join the shoulders and bifurcated pelvis.
-export function buildBaseBodyParts(rig) {
-  const bi = (name) => rig.boneIndex.get(name);
+/** Builds the base body (torso, limbs, feet) as one shared-vertex surface plus the hands and toes. */
+export function buildBaseBodyParts(rig: HumanoidRig): MeshPart[] {
+  const bi = (name: string) => rig.boneIndex.get(name);
   const pk = normalizeAndPackWeights;
-  const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
-  const faceSlots = [], faceBands = [];
+  const positions: number[] = [], uvs: number[] = [], colors: number[] = [], skinIdx: number[] = [], skinWgt: number[] = [];
+  const indices: number[] = [];
+  const faceSlots: string[] = [], faceBands: (number | null)[] = [];
   const interfaces: Record<string, number[]> = {};
-  const handParts = [];
-  const addVertex = (p, w) => {
+  const handParts: MeshPart[] = [];
+  const addVertex = (p: THREE.Vector3, w: PackedWeights) => {
     const i = positions.length / 3;
     positions.push(p.x, p.y, p.z);
     uvs.push(p.x * 2 + 0.5, p.y / 1.78 + p.z);
@@ -22,13 +31,13 @@ export function buildBaseBodyParts(rig) {
     skinWgt.push(...w.weights);
     return i;
   };
-  const point = (i) => new THREE.Vector3().fromArray(positions, i * 3);
-  const triangle = (a, b, c, slot, band = null) => {
+  const point = (i: number) => new THREE.Vector3().fromArray(positions, i * 3);
+  const triangle = (a: number, b: number, c: number, slot: string, band: number | null = null) => {
     indices.push(a, b, c);
     faceSlots.push(slot);
     faceBands.push(band);
   };
-  const bridge = (a, b, slot, band) => {
+  const bridge = (a: number[], b: number[], slot: string, band: number | null) => {
     if (a.length !== b.length) throw new Error("Body interface ring size mismatch.");
     for (let i = 0; i < a.length; i++) {
       const j = (i + 1) % a.length;
@@ -36,7 +45,7 @@ export function buildBaseBodyParts(rig) {
       triangle(a[j], b[j], b[i], slot, band);
     }
   };
-  const spineWeight = (y) => {
+  const spineWeight = (y: number) => {
     const anchors: [string, number][] = [["Hips", 0.96], ["Spine", 1.08], ["Spine1", 1.24],
       ["Chest", 1.38], ["Neck", 1.51], ["Head", 1.61]];
     for (let i = 0; i < anchors.length - 1; i++) {
@@ -48,7 +57,7 @@ export function buildBaseBodyParts(rig) {
     }
     return pk([[bi("Head"), 1]]);
   };
-  const torsoWeight = (p) => {
+  const torsoWeight = (p: THREE.Vector3) => {
     const side = p.x >= 0 ? "L" : "R";
     const shoulder = THREE.MathUtils.smoothstep(Math.abs(p.x), 0.125, 0.205)
       * THREE.MathUtils.smoothstep(p.y, 1.27, 1.36)
@@ -74,7 +83,7 @@ export function buildBaseBodyParts(rig) {
     { y: 1.50, rx: 0.064, rz: 0.057, cz: -0.004 },
     { y: 1.515, rx: 0.055, rz: 0.052, cz: -0.006 },
   ];
-  const profile = (y) => {
+  const profile = (y: number) => {
     for (let i = 0; i < table.length - 1; i++) {
       const a = table[i], b = table[i + 1];
       if (y <= b.y) {
@@ -103,7 +112,7 @@ export function buildBaseBodyParts(rig) {
   });
   const coarseSegs = 40;
   const halfHole = 3;
-  const inShoulder = (j) => (j + halfHole) % (coarseSegs / 2) < halfHole * 2;
+  const inShoulder = (j: number) => (j + halfHole) % (coarseSegs / 2) < halfHole * 2;
   const columns = Array.from({ length: coarseSegs }, (_, j) => inShoulder(j) ? [j] : [j, j + 0.5]).flat();
   const coarseToFine = Array.from({ length: coarseSegs }, (_, j) => columns.indexOf(j));
   const segs = columns.length;
@@ -117,12 +126,12 @@ export function buildBaseBodyParts(rig) {
   });
   // Start the cervical loop at the nape, in the same angular order as the skull.
   const nape = columns.indexOf(coarseSegs * 0.75);
-  const atNape = (ring) => [...ring.slice(nape), ...ring.slice(0, nape)];
-  interfaces.neck = atNape(torso.at(-1));
-  interfaces.neckBelow = atNape(torso.at(-2));
+  const atNape = (ring: number[]) => [...ring.slice(nape), ...ring.slice(0, nape)];
+  interfaces.neck = atNape(torso.at(-1)!);
+  interfaces.neckBelow = atNape(torso.at(-2)!);
   const neckAngles = atNape(columns).map((j) =>
     ((j - columns[nape] + coarseSegs) % coarseSegs) / coarseSegs * Math.PI * 2 - Math.PI);
-  const wrap = (j) => (j + segs) % segs;
+  const wrap = (j: number) => (j + segs) % segs;
   const shoulderLo = ys.indexOf(1.30), shoulderHi = ys.indexOf(1.45);
   // Stitch the dense torso to the original pelvis ring without changing its leg loops.
   for (let j = 0; j < coarseSegs; j++) {
@@ -141,7 +150,7 @@ export function buildBaseBodyParts(rig) {
       triangle(torso[r][k], torso[r + 1][k], torso[r + 1][j], "torso");
     }
   }
-  const extendTube = (boundary, defs, slot) => {
+  const extendTube = (boundary: number[], defs: TubeSegment[], slot: string) => {
     let previous = boundary;
     const center = boundary.reduce((v, i) => v.add(point(i)), new THREE.Vector3()).divideScalar(boundary.length);
     const tangent = defs[0].pos.clone().sub(center).normalize();
@@ -191,8 +200,8 @@ export function buildBaseBodyParts(rig) {
   // on a tilted ellipse (armpit edge on the chest wall, top raised and pushed out to cap the
   // humeral head like the deltoid) and spread that offset into the surrounding torso.
   const shoulderSocket = { bottom: [0.183, 1.300], top: [0.238, 1.452], depth: 0.061, inset: 0.020, reach: 0.075 };
-  const seatShoulder = (opening, s, z0) => {
-    const setPoint = (i, v) => { positions[i * 3] = v.x; positions[i * 3 + 1] = v.y; positions[i * 3 + 2] = v.z; };
+  const seatShoulder = (opening: number[], s: number, z0: number) => {
+    const setPoint = (i: number, v: THREE.Vector3) => { positions[i * 3] = v.x; positions[i * 3 + 1] = v.y; positions[i * 3 + 2] = v.z; };
     const { bottom, top, depth, inset, reach } = shoulderSocket;
     const lo = new THREE.Vector3(s * bottom[0], bottom[1], z0), hi = new THREE.Vector3(s * top[0], top[1], z0);
     const center = lo.clone().add(hi).multiplyScalar(0.5);
@@ -200,7 +209,7 @@ export function buildBaseBodyParts(rig) {
     up.normalize();
     const rim = opening.map(point);
     const centroid = rim.reduce((a, v) => a.add(v), new THREE.Vector3()).divideScalar(rim.length);
-    const angleOf = (v) => Math.atan2(v.z - centroid.z, v.y - centroid.y);
+    const angleOf = (v: THREE.Vector3) => Math.atan2(v.z - centroid.z, v.y - centroid.y);
     const winding = Math.sin(angleOf(rim[1]) - angleOf(rim[0])) >= 0 ? 1 : -1;
     const targets = rim.map((_, k) => {
       const a = angleOf(rim[0]) + winding * k / rim.length * Math.PI * 2;
@@ -239,9 +248,9 @@ export function buildBaseBodyParts(rig) {
     const upper = rig.worldRest.get(`UpperArm_${side}`);
     const elbow = rig.worldRest.get(`Forearm_${side}`);
     const hand = rig.worldRest.get(`Hand_${side}`);
-    const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
-    const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
-    const defs = [
+    const at = (a: THREE.Vector3, b: THREE.Vector3, t: number) => new THREE.Vector3().lerpVectors(a, b, t);
+    const w = (a: string, b: string, t: number) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
+    const defs = (<TubeRow[]>[
       // Ease from the torso rim into the humerus over two rings so the arm root doesn't fold.
       [at(upper, elbow, 0.20), 0.060, 0.059, w("Deltoid", "UpperArm", 0.30)],
       [at(upper, elbow, 0.35), 0.057, 0.056, w("Deltoid", "UpperArm", 0.72)],
@@ -255,7 +264,7 @@ export function buildBaseBodyParts(rig) {
       [at(elbow, hand, 0.68), 0.032, 0.033, w("Forearm", "ForearmTwist", 1)],
       [at(elbow, hand, 0.90), 0.024, 0.030, w("ForearmTwist", "Hand", 0.3)],
       [hand.clone(), 0.020, 0.035, w("ForearmTwist", "Hand", 0.75)],
-    ].map(([pos, rx, rz, weight]) => ({ pos, rx, rz, weight }));
+    ]).map(([pos, rx, rz, weight]): TubeSegment => ({ pos, rx, rz, weight }));
     const wrist = extendTube(opening, defs, `arms_${side}`);
     interfaces[`wrist_${side}`] = wrist;
     handParts.push(...buildJointedHand(rig, side, s, { addVertex, point, triangle, wrist }));
@@ -278,9 +287,9 @@ export function buildBaseBodyParts(rig) {
     const thigh = rig.worldRest.get(`Thigh_${side}`);
     const knee = rig.worldRest.get(`Shin_${side}`);
     const ankle = rig.worldRest.get(`Foot_${side}`);
-    const at = (a, b, t) => new THREE.Vector3().lerpVectors(a, b, t);
-    const w = (a, b, t) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
-    const defs = [
+    const at = (a: THREE.Vector3, b: THREE.Vector3, t: number) => new THREE.Vector3().lerpVectors(a, b, t);
+    const w = (a: string, b: string, t: number) => pk([[bi(`${a}_${side}`), 1 - t], [bi(`${b}_${side}`), t]]);
+    const defs = (<TubeRow[]>[
       [at(thigh, knee, 0.15), 0.082, 0.087, pk([[bi("Hips"), 0.22], [bi(`Thigh_${side}`), 0.78]])],
       [at(thigh, knee, 0.28), 0.079, 0.083, pk([[bi("Hips"), 0.06], [bi(`Thigh_${side}`), 0.94]])],
       [at(thigh, knee, 0.46), 0.072, 0.076, w("Thigh", "Shin", 0)],
@@ -299,22 +308,23 @@ export function buildBaseBodyParts(rig) {
       [new THREE.Vector3(ankle.x, 0.030, 0.087), 0.048, 0.023, w("Foot", "Toe", 0.18)],
       [new THREE.Vector3(ankle.x, 0.026, 0.121), 0.052, 0.020, w("Foot", "Toe", 0.50)],
       [new THREE.Vector3(ankle.x, 0.024, 0.138), 0.049, 0.018, w("Foot", "Toe", 0.82)],
-    ].map(([pos, rx, rz, weight]) => ({ pos, rx, rz, weight }));
+    ]).map(([pos, rx, rz, weight]): TubeSegment => ({ pos, rx, rz, weight }));
     extendTube(opening, defs, `legs_${side}`);
   }
   // Vertices inside the shoulder cutouts are intentionally unused; compact them.
   const used = [...new Set(indices)];
   const remap = new Map(used.map((i, j) => [i, j]));
-  const take = (array, size) => used.flatMap((i) => array.slice(i * size, (i + 1) * size));
+  const take = (array: number[], size: number) => used.flatMap((i) => array.slice(i * size, (i + 1) * size));
   const geo = buildGeometryFromArrays(take(positions, 3), take(uvs, 2), take(colors, 3),
-    take(skinIdx, 4), take(skinWgt, 4), indices.map((i) => remap.get(i)));
+    take(skinIdx, 4), take(skinWgt, 4), indices.map((i) => remap.get(i)!));
   const pAttr = geo.attributes.position;
   const neighbors = Array.from({ length: pAttr.count }, () => new Set<number>());
-  for (let j = 0; j < geo.index.count; j += 3) {
-    const face = [geo.index.getX(j), geo.index.getX(j + 1), geo.index.getX(j + 2)];
+  const geoIndex = geo.index!;
+  for (let j = 0; j < geoIndex.count; j += 3) {
+    const face = [geoIndex.getX(j), geoIndex.getX(j + 1), geoIndex.getX(j + 2)];
     for (const a of face) for (const b of face) if (a !== b) neighbors[a].add(b);
   }
-  const isShoulder = (i) => {
+  const isShoulder = (i: number) => {
     const y = pAttr.getY(i), x = Math.abs(pAttr.getX(i));
     return y > 1.26 && y < 1.49 && x > 0.12;
   };
@@ -342,7 +352,7 @@ export function buildBaseBodyParts(rig) {
   geo.userData.interfaces = Object.fromEntries(Object.entries(interfaces).map(([name, loop]) =>
     [name, loop.map((i) => remap.get(i))]));
   geo.userData.neckAngles = neckAngles;
-  const parts = [{ geo, mat: 0, tag: "body" }, ...handParts];
+  const parts: MeshPart[] = [{ geo, mat: 0, tag: "body" }, ...handParts];
   for (const [side, s] of SIDES) {
     const x = rig.worldRest.get(`Foot_${side}`).x;
     const toes = [
@@ -360,7 +370,7 @@ export function buildBaseBodyParts(rig) {
         weight: pk([[bi(`Foot_${side}`), (1 - t) * 0.2], [bi(`Toe_${side}`), 0.8 + t * 0.2]]),
       }));
       const toeGeo = buildChainTube(defs, 12, true, true);
-      toeGeo.userData.faceSlots = Array(toeGeo.index.count / 3).fill(`feet_${side}`);
+      toeGeo.userData.faceSlots = Array(toeGeo.index!.count / 3).fill(`feet_${side}`);
       parts.push({ geo: toeGeo, mat: 0, tag: `toe_${side}_${index + 1}` });
     });
   }

@@ -1,15 +1,16 @@
 import * as THREE from "three";
+import type { KeyedMap } from "../../../rigging/api/types.js";
 import { buildGeometryFromArrays, weldSeamNormals } from "../geometry/attributes.js";
 import { smoothstep } from "../../../shared/math.js";
 
-export function buildHairCap(headCenter, boneIndex) {
+export function buildHairCap(headCenter: THREE.Vector3, boneIndex: KeyedMap<number>): THREE.BufferGeometry {
   const latSegs = 28;
   const lonSegs = 56;
   const stride = lonSegs + 1;
   const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
   const hIdx = boneIndex.get("Head");
 
-  function evalMaxTheta(phi) {
+  function evalMaxTheta(phi: number) {
     const a = Math.abs(phi);
     let maxT = THREE.MathUtils.lerp(Math.PI * 0.29, Math.PI * 0.59, smoothstep(0.45, 2.35, a));
     const templeRecess = Math.exp(-Math.pow((a - 0.62) / 0.20, 2));

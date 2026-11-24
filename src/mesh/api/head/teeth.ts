@@ -11,7 +11,7 @@ export const DENTAL_ARCH = {
   lower: { rx: 0.0235, rz: 0.033, front: 0.1075, edges: [1.5945, 1.5943, 1.5935, 1.5926, 1.5920, 1.5915, 1.5912] },
 };
 
-export function dentalLayout(upper) {
+export function dentalLayout(upper: boolean) {
   // Seven teeth per quadrant: incisors, canine, two premolars, two molars.
   const widths = upper ? [0.0080, 0.0064, 0.0072, 0.0065, 0.0064, 0.0092, 0.0087]
     : [0.0052, 0.0057, 0.0065, 0.0065, 0.0068, 0.0095, 0.0090];
@@ -35,7 +35,7 @@ export function dentalLayout(upper) {
   return teeth;
 }
 
-export function buildTeethArc(upper, boneIdx) {
+export function buildTeethArc(upper: boolean, boneIdx: number): THREE.BufferGeometry {
   const parts = [], direction = upper ? 1 : -1;
   const weight = normalizeAndPackWeights([[boneIdx, 1]]);
   for (const tooth of dentalLayout(upper)) {
@@ -47,7 +47,7 @@ export function buildTeethArc(upper, boneIdx) {
       const pts = [], wgts = [];
       for (let s = 0; s < 32; s++) {
         const a = s / 32 * Math.PI * 2;
-        const rounded = (n) => Math.sign(n) * Math.pow(Math.abs(n), 0.55);
+        const rounded = (n: number) => Math.sign(n) * Math.pow(Math.abs(n), 0.55);
         const lx = rounded(Math.cos(a)) * tooth.width * 0.48 * profile;
         const lz = -rounded(Math.sin(a)) * tooth.depth * 0.5 * profile * (tooth.i < 3 ? 0.55 + v * 0.45 : 1);
         // Canine: single pointed cusp. Premolars: buccal + lingual cusps. Molars: four corner cusps.
@@ -71,12 +71,12 @@ export function buildTeethArc(upper, boneIdx) {
   return BufferGeometryUtils.mergeGeometries(parts.map(ensureUniformAttributes), false);
 }
 
-export function buildGumArc(upper, boneIdx) {
+export function buildGumArc(upper: boolean, boneIdx: number): THREE.BufferGeometry {
   const { rx, rz, front } = upper ? DENTAL_ARCH.upper : DENTAL_ARCH.lower;
   const dir = upper ? 1 : -1, radius = 0.0040;
   // Gum line tracks each crown's cervical margin, overlapping it by ~1.3 mm.
   const quadrant = dentalLayout(upper).filter((tooth) => tooth.side === 1);
-  const cervicalY = (t) => {
+  const cervicalY = (t: number) => {
     const a = Math.abs(t);
     let k = quadrant.findIndex((tooth) => tooth.t > a);
     if (k === -1) k = quadrant.length;

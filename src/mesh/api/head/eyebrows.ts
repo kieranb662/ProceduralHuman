@@ -1,8 +1,11 @@
+import type { KeyedMap } from "../../../rigging/api/types.js";
 import * as THREE from "three";
 import { buildChainTube } from "../geometry/loft.js";
 import { normalizeAndPackWeights } from "../../../rigging/api/skin-weights.js";
 
-export function buildEyebrowStrip(s, boneName, boneIndex, evalForeheadSurfaceZ) {
+export function buildEyebrowStrip(
+  s: number, boneName: string, boneIndex: KeyedMap<number>, evalForeheadSurfaceZ: (x: number, y: number) => number,
+): THREE.BufferGeometry {
   const bIdx = boneIndex.get(boneName);
   const pts = [];
   const steps = 10;

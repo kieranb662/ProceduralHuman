@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { buildGeometryFromArrays } from "../geometry/attributes.js";
 
-export function buildEyelidShell(center, radius, isTop, boneIdx) {
+export function buildEyelidShell(center: THREE.Vector3, radius: number, isTop: boolean, boneIdx: number): THREE.BufferGeometry {
   const rSegs = 12;
   const cSegs = 28;
   const stride = cSegs + 1;

@@ -2,10 +2,13 @@
 // Everything here is page-specific: the viewport, camera views, the held prop and the reach target.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createAdultMaleCharacter, createStudioLighting, handLayout } from "@kieranb662/procedural-human";
+import { createAdultMaleCharacter, createParkMillerRng, createStudioLighting, handLayout } from "@kieranb662/procedural-human";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
 
 registerEditorElements();
+
+// ?test freezes time and randomness so visual tests are deterministic.
+const testMode = new URLSearchParams(location.search).has("test");
 
 // --- Viewport --------------------------------------------------------------------------------
 const container = document.getElementById("viewport");
@@ -49,7 +52,7 @@ grid.material.transparent = true;
 scene.add(grid);
 
 // --- Character -------------------------------------------------------------------------------
-const character = createAdultMaleCharacter();
+const character = createAdultMaleCharacter(testMode ? { rng: createParkMillerRng(1) } : {});
 scene.add(character.root);
 window.proceduralHuman = { character, lighting, createAdultMaleCharacter };
 
@@ -178,7 +181,7 @@ timer.connect(document);
 
 renderer.setAnimationLoop((timestamp) => {
   timer.update(timestamp);
-  const dt = Math.min(timer.getDelta(), 0.05);
+  const dt = testMode ? 0 : Math.min(timer.getDelta(), 0.05);
   const elapsed = timer.getElapsed();
 
   if (reachOrb.visible) {
@@ -197,8 +200,8 @@ renderer.setAnimationLoop((timestamp) => {
 
   character.update(dt, {
     headEditor: headEditor.editing,
-    autoBlink: animationEditor.autoBlink,
-    autoGaze: animationEditor.autoGaze,
+    autoBlink: !testMode && animationEditor.autoBlink,
+    autoGaze: !testMode && animationEditor.autoGaze,
     reachTarget: reachOrb.visible ? reachOrb.position : null,
   });
 
@@ -217,4 +220,5 @@ renderer.setAnimationLoop((timestamp) => {
 
   controls.update();
   renderer.render(scene, camera);
+  window.__phReady = true;
 });

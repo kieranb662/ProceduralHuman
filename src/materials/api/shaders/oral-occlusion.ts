@@ -2,7 +2,9 @@
  * Deep oral surfaces are occluded: scale specular/clearcoat by the baked vertex-colour depth
  * so the throat stays dark instead of catching the key light.
  */
-export function applyOralOcclusion(material) {
+import type * as THREE from "three";
+
+export function applyOralOcclusion(material: THREE.Material): void {
   material.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace("#include <aomap_fragment>", `#include <aomap_fragment>
             #if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )

@@ -1,9 +1,10 @@
+import type { TextureSettings } from "./settings.js";
 import { rgb } from "../../shared/color.js";
-import { defaultCanvasFactory, finish, mk } from "./canvas.js";
+import { type CanvasFactory, defaultCanvasFactory, finish, mk } from "./canvas.js";
 import { vnoise } from "./noise.js";
 
 // Hair: strand streaks running along V
-export function makeHairTextures(hex, textureSettings, createCanvas = defaultCanvasFactory) {
+export function makeHairTextures(hex: string, textureSettings: TextureSettings, createCanvas: CanvasFactory = defaultCanvasFactory) {
   const S = 256, col = mk(S, createCanvas), bmp = mk(S, createCanvas), [R, G, B] = rgb(hex);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {

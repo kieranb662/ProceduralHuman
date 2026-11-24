@@ -1,8 +1,9 @@
 import * as THREE from "three";
+import type { KeyedMap } from "../../../rigging/api/types.js";
 import { ensureUniformAttributes } from "../geometry/attributes.js";
 import { smoothstep } from "../../../shared/math.js";
 
-export function buildEarGeometry(rootPos, sideSign, boneName, boneIndex) {
+export function buildEarGeometry(rootPos: THREE.Vector3, sideSign: number, boneName: string, boneIndex: KeyedMap<number>): THREE.BufferGeometry {
   const bIdx = boneIndex.get(boneName);
   const hIdx = boneIndex.get("Head");
 

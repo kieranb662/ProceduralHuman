@@ -18,17 +18,17 @@ export function createFaceRig(rig: HumanoidRig, skinnedMesh: THREE.SkinnedMesh, 
     const bm = rig.boneMap;
     const dict = skinnedMesh.morphTargetDictionary;
     const inf = skinnedMesh.morphTargetInfluences;
-    const addMorph = (name, val) => {
+    const addMorph = (name: string, val: number) => {
       const idx = dict?.[name];
       if (idx !== undefined && inf) {
         inf[idx] = THREE.MathUtils.clamp(inf[idx] + val, 0, 1);
       }
     };
-    const addRot = (name, rx, ry, rz) => {
+    const addRot = (name: string, rx: number, ry: number, rz: number) => {
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, "XYZ"));
       bm.get(name).quaternion.multiply(q);
     };
-    const addPos = (name, dx, dy, dz) => {
+    const addPos = (name: string, dx: number, dy: number, dz: number) => {
       const b = bm.get(name);
       b.position.x += dx;
       b.position.y += dy;

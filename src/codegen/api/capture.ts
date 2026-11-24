@@ -13,7 +13,7 @@ export interface CaptureOptions {
 export function captureHumanDesign(character: ProceduralCharacter, options: CaptureOptions = {}): HumanDesign {
   const outfit: Outfit = {};
   for (const [slot, state] of Object.entries(character.clothingSlots)) {
-    if (state.item !== "none") outfit[slot] = state.item;
+    if (state.item !== "none") (outfit as Record<string, string>)[slot] = state.item;
   }
   const { base, upper, face } = character.animationState;
   return defineHuman({

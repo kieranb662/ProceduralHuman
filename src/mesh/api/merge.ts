@@ -2,11 +2,14 @@ import * as THREE from "three";
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 import { buildCervicalSurface } from "./body/cervical.js";
 import { ensureUniformAttributes } from "./geometry/attributes.js";
+import type { HumanoidRig } from "../../rigging/api/types.js";
+import type { MeshPart } from "./types.js";
 
-export function mergeCharacterParts(parts, rig) {
+/** Merges body and head parts plus the generated cervical (neck) surface into one indexed geometry with material groups. */
+export function mergeCharacterParts(parts: MeshPart[], rig: HumanoidRig): THREE.BufferGeometry {
   const headIndex = parts.findIndex((part) => part.tag === "head");
   const head = parts[headIndex].geo;
-  const count = (sum, part) => sum + part.geo.attributes.position.count;
+  const count = (sum: number, part: MeshPart) => sum + part.geo.attributes.position.count;
   const headOffset = parts.slice(0, headIndex).reduce(count, 0);
   const neckOffset = parts.reduce(count, 0);
   const neck = buildCervicalSurface(parts[0].geo, head, rig, headOffset, neckOffset);
@@ -14,11 +17,11 @@ export function mergeCharacterParts(parts, rig) {
     .map(ensureUniformAttributes), true);
   if (!merged) throw new Error("Could not merge procedural character geometry.");
   parts.forEach((part, i) => { merged.groups[i].materialIndex = part.mat; });
-  const neckGroup = merged.groups.at(-1);
+  const neckGroup = merged.groups.at(-1)!;
   neckGroup.count = neck.indices.length;
   neckGroup.materialIndex = parts[headIndex].mat;
   const index = new Uint32Array(neckGroup.start + neckGroup.count);
-  index.set(merged.index.array);
+  index.set(merged.index!.array);
   index.set(neck.indices, neckGroup.start);
   // Skin uses triplanar mapping, so the skull's old UV seam can share indices too.
   const stride = head.userData.skullStride;
@@ -27,11 +30,11 @@ export function mergeCharacterParts(parts, rig) {
     if ((index[i] - headOffset) % stride === stride - 1) index[i] -= stride - 1;
   }
   merged.setIndex(new THREE.BufferAttribute(index, 1));
-  const normals = merged.attributes.normal;
+  const normals = merged.attributes.normal as THREE.BufferAttribute;
   merged.deleteAttribute("normal");
   merged.computeVertexNormals();
   const welded = merged.attributes.normal;
-  const setNormal = (i) => normals.setXYZ(i, welded.getX(i), welded.getY(i), welded.getZ(i));
+  const setNormal = (i: number) => normals.setXYZ(i, welded.getX(i), welded.getY(i), welded.getZ(i));
   for (let i = headOffset; i < headOffset + head.attributes.position.count; i += stride) {
     setNormal(i);
   }
@@ -45,7 +48,8 @@ export function mergeCharacterParts(parts, rig) {
   return merged;
 }
 
-export function restoreNeckJoinNormals(geometry) {
+/** Restores the welded normals along the neck seam after a body or head surface update. */
+export function restoreNeckJoinNormals(geometry: THREE.BufferGeometry): void {
   for (const [i, x, y, z] of geometry.userData.neckJoinNormals) {
     geometry.attributes.normal.setXYZ(i, x, y, z);
   }

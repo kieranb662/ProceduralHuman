@@ -6,7 +6,7 @@ import {
 } from "../animations/api/names.js";
 import { DEFAULT_PALETTE_COLORS, type Palette } from "../materials/api/palette.js";
 import { configureTorsoDetails, type TorsoDetailChanges, type TorsoDetails } from "../mesh/api/body/torso.js";
-import { CLOTHING_ITEMS, type Outfit } from "../mesh/api/clothing/items.js";
+import { CLOTHING_ITEMS, type ClothingSlot, type Outfit } from "../mesh/api/clothing/items.js";
 import { validateHeadDesign } from "../mesh/api/head/design.js";
 import type { HeadDesign } from "../mesh/api/head/types.js";
 import { resolveTextureSettings } from "../textures/api/settings.js";
@@ -98,10 +98,10 @@ export function defineHuman(input: HumanDesignInput = {}): HumanDesign {
 
   const outfit: Outfit = {};
   for (const [slot, item] of Object.entries(input.outfit ?? {})) {
-    if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot], item)) {
+    if (!Object.hasOwn(CLOTHING_ITEMS, slot) || !Object.hasOwn(CLOTHING_ITEMS[slot as ClothingSlot], item)) {
       throw new Error(`Unknown clothing item ${slot}: ${String(item)}.`);
     }
-    if (item !== "none") outfit[slot] = item;
+    if (item !== "none") (outfit as Record<string, string>)[slot] = item;
   }
 
   const pose: HumanPose = {

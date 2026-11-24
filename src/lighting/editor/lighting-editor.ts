@@ -1,8 +1,8 @@
 import type { PhColorInput } from "../../ui/api/color-input.js";
-import { defineElement, h } from "../../ui/api/element.js";
+import { defineElement, h, onDetail } from "../../ui/api/element.js";
 import type { PhToggle } from "../../ui/api/toggle.js";
 import { PhEditorElement } from "../../ui/editor/editor-element.js";
-import type { PhParameterGroup } from "../../ui/editor/parameter-group.js";
+import type { ParameterEventDetail, PhParameterGroup } from "../../ui/editor/parameter-group.js";
 import {
   anglesToLightPosition, lightPositionToAngles,
   type StudioLighting, type StudioLightingChanges,
@@ -30,7 +30,7 @@ export class PhLightingEditor extends PhEditorElement<StudioLighting> {
       { key: "hemisphere", label: "Sky / ground fill", min: 0, max: 2 },
     ];
     ambient.values = { environmentIntensity: s.environmentIntensity, hemisphere: s.hemisphere.intensity };
-    ambient.addEventListener("input", (e: CustomEvent) => update(e.detail.key === "hemisphere"
+    onDetail<ParameterEventDetail>(ambient, "input", (_detail, e) => update(e.detail.key === "hemisphere"
       ? { hemisphere: { intensity: e.detail.value } } : { environmentIntensity: e.detail.value }));
 
     const lightPanel = (which: "key" | "rim", heading: string) => {
@@ -45,9 +45,9 @@ export class PhLightingEditor extends PhEditorElement<StudioLighting> {
         { key: "elevation", label: "Height (elevation)", min: -10, max: 90, step: 1, decimals: 0, unit: "°" },
       ];
       params.values = { intensity: light.intensity, azimuth: angles.azimuth, elevation: angles.elevation };
-      params.addEventListener("input", (e: CustomEvent) => {
+      onDetail<ParameterEventDetail>(params, "input", (_detail, e) => {
         if (e.detail.key === "intensity") return update({ [which]: { intensity: e.detail.value } });
-        angles[e.detail.key] = e.detail.value;
+        angles[e.detail.key as "azimuth" | "elevation"] = e.detail.value;
         update({ [which]: { position: anglesToLightPosition(angles.azimuth, angles.elevation, angles.distance) } });
       });
       const panel = h("ph-panel", { heading, framed: true }, color, params);

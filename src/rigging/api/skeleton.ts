@@ -1,16 +1,16 @@
 import { SIDES } from "../../shared/sides.js";
 import * as THREE from "three";
 import { handLayout } from "./hand-layout.js";
-import type { HumanoidRig } from "./types.js";
+import type { HumanoidRig, KeyedMap } from "./types.js";
 
 // --- 1. Skeleton Builder (body + 3-joint fingers & thumb) ---
 export function createHumanoidSkeleton(): HumanoidRig {
   const bones: THREE.Bone[] = [];
-  const boneMap = new Map<string, THREE.Bone>();
-  const boneIndex = new Map<string, number>();
-  const worldRest = new Map<string, THREE.Vector3>();
+  const boneMap = new Map<string, THREE.Bone>() as KeyedMap<THREE.Bone>;
+  const boneIndex = new Map<string, number>() as KeyedMap<number>;
+  const worldRest = new Map<string, THREE.Vector3>() as KeyedMap<THREE.Vector3>;
 
-  function addBone(name, parentName, wx, wy, wz) {
+  function addBone(name: string, parentName: string | null, wx: number, wy: number, wz: number) {
     const bone = new THREE.Bone();
     bone.name = name;
     const wp = new THREE.Vector3(wx, wy, wz);

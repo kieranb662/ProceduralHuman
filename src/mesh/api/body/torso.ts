@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import { smoothstep } from "../../../shared/math.js";
 
-export const TORSO_DETAILS = {
+/** [key, label, min, max, step, default] for one torso detail slider. */
+export type TorsoSlider = [key: string, label: string, min: number, max: number, step: number, defaultValue: number];
+
+export const TORSO_DETAILS: Record<keyof TorsoDetails, { label: string; enabled: boolean; sliders: TorsoSlider[] }> = {
   pectorals: { label: "Pectoral muscles", enabled: false, sliders: [
     ["depth", "Projection (mm)", 0, 38, 1, 23],
     ["width", "Width (%)", 75, 125, 1, 100],
@@ -36,23 +39,24 @@ export function configureTorsoDetails(current: TorsoDetails | null = null, chang
       throw new Error(`Invalid torso detail: ${key}.`);
     }
     for (const [name, value] of Object.entries(values)) {
-      const slider = TORSO_DETAILS[key].sliders.find(([id]) => id === name);
+      const slider = TORSO_DETAILS[key as keyof TorsoDetails].sliders.find(([id]) => id === name);
       if (name === "enabled" ? typeof value !== "boolean"
-        : !slider || !Number.isFinite(value) || value < slider[2] || value > slider[3]) {
+        : !slider || typeof value !== "number" || !Number.isFinite(value) || value < slider[2] || value > slider[3]) {
         throw new Error(`Invalid torso detail parameter: ${key}.${name}.`);
       }
     }
   }
   return Object.fromEntries(Object.entries(TORSO_DETAILS).map(([key, { enabled, sliders }]) => [
     key, { enabled, ...Object.fromEntries(sliders.map(([name, , , , , value]) => [name, value])),
-      ...current?.[key], ...changes[key] },
+      ...current?.[key as keyof TorsoDetails], ...changes[key as keyof TorsoDetails] },
   ])) as unknown as TorsoDetails;
 }
 
-export function sculptTorso(geo, rest, { pectorals, collarbones, abdominals, buttocks }: TorsoDetails) {
+/** Re-sculpts the body from its neutral positions `rest` with the enabled torso details. */
+export function sculptTorso(geo: THREE.BufferGeometry, rest: ArrayLike<number>, { pectorals, collarbones, abdominals, buttocks }: TorsoDetails): void {
   const pos = geo.attributes.position;
-  const bell = (t) => Math.exp(-(t ** 2));
-  const taper = (v, lo, start, end, hi) => smoothstep(lo, start, v) * (1 - smoothstep(end, hi, v));
+  const bell = (t: number) => Math.exp(-(t ** 2));
+  const taper = (v: number, lo: number, start: number, end: number, hi: number) => smoothstep(lo, start, v) * (1 - smoothstep(end, hi, v));
   for (let i = 0; i < rest.length; i += 3) {
     const x = Math.abs(rest[i]), y = rest[i + 1], z = rest[i + 2];
     let dz = 0;

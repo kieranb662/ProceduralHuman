@@ -1,12 +1,13 @@
 import type * as THREE from "three";
 import type { ProceduralCharacter } from "../../humans/types.js";
 import type { PhColorInput } from "../../ui/api/color-input.js";
-import { defineElement, h } from "../../ui/api/element.js";
+import { defineElement, h, onDetail } from "../../ui/api/element.js";
 import type { PhSelect } from "../../ui/api/select.js";
 import type { PhStatus } from "../../ui/api/status.js";
 import { PhEditorElement } from "../../ui/editor/editor-element.js";
-import type { PhParameterGroup } from "../../ui/editor/parameter-group.js";
-import { MATERIAL_SLOT_NAMES, MATERIAL_SLOT_TEXTURE_KEYS, type Palette } from "../api/palette.js";
+import type { ParameterEventDetail, PhParameterGroup } from "../../ui/editor/parameter-group.js";
+import { MATERIAL_SLOT_NAMES, MATERIAL_SLOT_TEXTURE_KEYS, type MaterialSurface, type Palette } from "../api/palette.js";
+import type { TextureSettings } from "../../textures/api/settings.js";
 import { MATERIAL_SURFACE_PARAMETERS, SKIN_BUMP_PARAMETER, materialSlotParameters } from "../api/parameters.js";
 
 const REBUILD_DELAY_MS = 180;
@@ -17,8 +18,8 @@ const REBUILD_DELAY_MS = 180;
  * Set `el.character`. Emits `ph-change` with `{ section: "materials", rebuilt }`.
  */
 export class PhMaterialsEditor extends PhEditorElement<ProceduralCharacter> {
-  private palette: Required<Palette>;
-  private initial: Required<Palette>;
+  private palette!: Required<Palette>;
+  private initial!: Required<Palette>;
   private slotIndex = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly status = h("ph-status") as PhStatus;
@@ -41,27 +42,27 @@ export class PhMaterialsEditor extends PhEditorElement<ProceduralCharacter> {
     slotSelect.addEventListener("change", () => { this.slotIndex = Number(slotSelect.value); this.render(); });
 
     const color = h("ph-color-input", { label: colorLabel }) as PhColorInput;
-    color.value = textureKey ? this.palette[textureKey] : this.palette.materials[this.slotIndex].color;
+    color.value = (textureKey ? this.palette[textureKey] : this.surfaceValues.color) ?? "#ffffff";
     color.addEventListener("input", () => this.setColor(color.value));
 
     const textures = h("ph-parameter-group") as PhParameterGroup;
     textures.parameters = [...rebuild, ...tiling];
     textures.values = this.palette.textures;
-    textures.addEventListener("input", (event: CustomEvent) => {
+    onDetail<ParameterEventDetail>(textures, "input", (_detail, event) => {
       const { key, value } = event.detail;
-      this.palette.textures[key] = value;
+      this.palette.textures[key as keyof TextureSettings] = value;
       if (tiling.some((p) => p.key === key)) this.setTiling(key, value);
       else this.scheduleRebuild();
     });
 
-    const surfaceValues = this.palette.materials[this.slotIndex];
+    const surfaceValues = this.surfaceValues;
     const surface = h("ph-parameter-group") as PhParameterGroup;
     surface.parameters = MATERIAL_SURFACE_PARAMETERS.filter((p) => p.key in surfaceValues)
       .map((p) => (textureKey === "skin" && p.key === "bumpScale" ? SKIN_BUMP_PARAMETER : p));
     surface.values = surfaceValues as Record<string, number>;
-    surface.addEventListener("input", (event: CustomEvent) => {
+    onDetail<ParameterEventDetail>(surface, "input", (_detail, event) => {
       const { key, value } = event.detail;
-      surfaceValues[key] = value;
+      surfaceValues[key as Exclude<keyof MaterialSurface, "color">] = value;
       (this.materials[this.slotIndex] as THREE.Material).setValues({ [key]: value });
       this.recordLiveEdit();
     });
@@ -82,6 +83,11 @@ export class PhMaterialsEditor extends PhEditorElement<ProceduralCharacter> {
     );
   }
 
+  /** Surface values of the selected slot (created on first edit). */
+  private get surfaceValues(): MaterialSurface {
+    return (this.palette.materials[this.slotIndex] ??= {});
+  }
+
   private get materials() { return this.target.skinnedMesh.material as THREE.Material[]; }
 
   private setColor(value: string) {
@@ -90,7 +96,7 @@ export class PhMaterialsEditor extends PhEditorElement<ProceduralCharacter> {
       this.palette[textureKey] = value;
       this.scheduleRebuild();
     } else {
-      this.palette.materials[this.slotIndex].color = value;
+      this.surfaceValues.color = value;
       (this.materials[this.slotIndex] as THREE.MeshStandardMaterial).color.set(value);
       this.recordLiveEdit();
     }

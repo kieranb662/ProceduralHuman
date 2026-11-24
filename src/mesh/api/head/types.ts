@@ -41,3 +41,10 @@ export interface HeadDesign {
 
 /** Head/face parts plus the design that produced them. */
 export type HeadParts = MeshPart[] & { design: HeadDesign };
+
+/** One vertex of the traced mouth opening: position plus its packed skin influences. */
+export interface MouthLoopVertex {
+  pos: import("three").Vector3;
+  idx: number[];
+  wgt: number[];
+}

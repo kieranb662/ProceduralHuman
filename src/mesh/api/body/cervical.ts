@@ -1,19 +1,35 @@
 import * as THREE from "three";
+import type { HumanoidRig } from "../../../rigging/api/types.js";
 import { buildGeometryFromArrays } from "../geometry/attributes.js";
 import { normalizeAndPackWeights } from "../../../rigging/api/skin-weights.js";
 
-export function buildCervicalSurface(body, head, rig, headOffset, neckOffset) {
-  const positions = [], uvs = [], colors = [], skinIdx = [], skinWgt = [], indices = [];
-  const { neck: base, neckBelow: below } = body.userData.interfaces;
-  const baseAngles = body.userData.neckAngles;
-  const { neckAngles: angles, neckStart: top, skullStride: stride } = head.userData;
-  const getPoint = (geo, i) => new THREE.Vector3().fromBufferAttribute(geo.attributes.position, i);
-  const packedAt = (geo, i) => Array.from({ length: 4 }, (_, k) =>
+/** The generated neck surface and the seam loops it shares with the body and head. */
+export interface CervicalSurface {
+  geo: THREE.BufferGeometry;
+  indices: number[];
+  headRim: number[];
+  bodyRim: number[];
+}
+
+/**
+ * Lofts the neck between the body's neck opening and the skull's lower rim, blending skin weights
+ * from the torso to the head and adding sternocleidomastoid, larynx and nape relief.
+ */
+export function buildCervicalSurface(
+  body: THREE.BufferGeometry, head: THREE.BufferGeometry, rig: HumanoidRig, headOffset: number, neckOffset: number,
+): CervicalSurface {
+  const positions: number[] = [], uvs: number[] = [], colors: number[] = [], skinIdx: number[] = [], skinWgt: number[] = [];
+  const indices: number[] = [];
+  const { neck: base, neckBelow: below } = body.userData.interfaces as { neck: number[]; neckBelow: number[] };
+  const baseAngles: number[] = body.userData.neckAngles;
+  const angles: number[] = head.userData.neckAngles, top: number = head.userData.neckStart, stride: number = head.userData.skullStride;
+  const getPoint = (geo: THREE.BufferGeometry, i: number) => new THREE.Vector3().fromBufferAttribute(geo.attributes.position, i);
+  const packedAt = (geo: THREE.BufferGeometry, i: number): [number, number][] => Array.from({ length: 4 }, (_, k) =>
     [geo.attributes.skinIndex.array[i * 4 + k], geo.attributes.skinWeight.array[i * 4 + k]]);
   const jawBone = rig.boneIndex.get("Jaw");
   const headBone = rig.boneIndex.get("Head");
   const rings = 12;
-  const band = (a, b) => {
+  const band = (a: number[], b: number[]) => {
     for (let i = 0; i < a.length; i++) {
       const j = (i + 1) % a.length;
       indices.push(a[i], a[j], b[i], a[j], b[j], b[i]);
@@ -28,12 +44,12 @@ export function buildCervicalSurface(body, head, rig, headOffset, neckOffset) {
     const b = getPoint(body, base[j]).lerp(getPoint(body, base[k]), f);
     const c = getPoint(body, below[j]).lerp(getPoint(body, below[k]), f);
     const height = p.y - b.y;
-    const tangent = (end, neighbor) => end.clone().sub(neighbor)
+    const tangent = (end: THREE.Vector3, neighbor: THREE.Vector3) => end.clone().sub(neighbor)
       .multiplyScalar(height / (end.y - neighbor.y));
     return { p, b, inSlope: tangent(b, c), outSlope: tangent(p, q),
       baseWeights: packedAt(body, base[j]), topWeights: packedAt(head, top + i) };
   });
-  let previous;
+  let previous: number[] | undefined;
   for (let r = 1; r < rings; r++) {
     const t = r / rings, blend = t * t * (3 - 2 * t);
     const current = angles.map((phi, i) => {
@@ -48,7 +64,7 @@ export function buildCervicalSurface(body, head, rig, headOffset, neckOffset) {
       const relief = (scm + larynx + nape) * envelope;
       v.x += Math.sin(phi) * relief;
       v.z += Math.cos(phi) * relief;
-      const pairs = baseWeights.map(([bone, weight]) => [bone, weight * (1 - blend)]);
+      const pairs: [number, number][] = baseWeights.map(([bone, weight]) => [bone, weight * (1 - blend)]);
       for (const [bone, weight] of topWeights) {
         // The jaw pulls on the submental skin, not the whole throat.
         const w = weight * blend;
@@ -84,7 +100,7 @@ export function buildCervicalSurface(body, head, rig, headOffset, neckOffset) {
     previous = current;
   }
   const headRim = angles.map((_, i) => headOffset + top + i);
-  band(previous, headRim);
+  band(previous!, headRim);
   return {
     geo: buildGeometryFromArrays(positions, uvs, colors, skinIdx, skinWgt, []),
     indices, headRim, bodyRim: base,

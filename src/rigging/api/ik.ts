@@ -1,7 +1,8 @@
 import * as THREE from "three";
+import type { HumanoidRig } from "./types.js";
 
 // --- 4. Root-Relative, Twist-Free 2-Bone Analytical Arm IK Solver ---
-export function makeOrthonormalBasisQuat(srcA, srcB, dstA, dstB) {
+export function makeOrthonormalBasisQuat(srcA: THREE.Vector3, srcB: THREE.Vector3, dstA: THREE.Vector3, dstB: THREE.Vector3): THREE.Quaternion {
   const sX = srcA.clone().normalize();
   const sY = srcB.clone().addScaledVector(sX, -srcB.dot(sX)).normalize();
   const sZ = new THREE.Vector3().crossVectors(sX, sY).normalize();
@@ -16,7 +17,7 @@ export function makeOrthonormalBasisQuat(srcA, srcB, dstA, dstB) {
   return new THREE.Quaternion().setFromRotationMatrix(mRot);
 }
 
-export function solveRightArmReachIK(rig, targetWorldPos, characterRoot) {
+export function solveRightArmReachIK(rig: HumanoidRig, targetWorldPos: THREE.Vector3, characterRoot: THREE.Object3D): void {
   const chest = rig.boneMap.get("Chest");
   const clav = rig.boneMap.get("Clavicle_R");
   const upper = rig.boneMap.get("UpperArm_R");
@@ -35,7 +36,7 @@ export function solveRightArmReachIK(rig, targetWorldPos, characterRoot) {
   chest.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(leanPitch, leanYaw, 0, "XYZ")));
   clav.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, leanYaw * 0.6, -0.12, "XYZ")));
 
-  const parent = upper.parent;
+  const parent = upper.parent!; // UpperArm_R is always parented to Clavicle_R
   parent.updateWorldMatrix(true, true);
 
   const pA = new THREE.Vector3();

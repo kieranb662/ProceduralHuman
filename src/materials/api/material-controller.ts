@@ -43,5 +43,10 @@ export function createMaterialController(
     };
   }
 
-  return { setPalette, get palette() { return current(); } };
+  return {
+    setPalette,
+    get palette() { return current(); },
+    /** Frees the current materials and their textures. */
+    dispose: () => disposeMaterials(skinnedMesh.material as THREE.Material[]),
+  };
 }

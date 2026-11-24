@@ -31,7 +31,7 @@ export class PhClothingEditor extends PhEditorElement<ProceduralCharacter> {
       const select = h("ph-select", { label: name[0].toUpperCase() + name.slice(1) }) as PhSelect;
       select.options = Object.entries(slot.items).map(([value, label]) => ({ value, label }));
       select.addEventListener("change", () => this.apply(() => character.setClothing(name as ClothingSlot, select.value as never)));
-      this.selects[name] = select;
+      this.selects[name as ClothingSlot] = select;
       return select;
     }));
     this.clear();
@@ -53,7 +53,7 @@ export class PhClothingEditor extends PhEditorElement<ProceduralCharacter> {
 
   private sync() {
     const slots = this.target.clothingSlots;
-    for (const [name, slot] of Object.entries(slots)) this.selects[name].value = slot.item;
+    for (const [name, slot] of Object.entries(slots)) this.selects[name as ClothingSlot]!.value = slot.item;
     const dressed = Object.values(slots).filter((slot) => slot.item !== "none").length;
     this.status.removeAttribute("tone");
     this.status.message = dressed ? `${dressed} removable clothing layers equipped.` : "All clothing slots empty.";

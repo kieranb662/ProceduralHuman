@@ -37,14 +37,14 @@ export class PhSelect extends PhElement {
   attributeChangedCallback(name: string) {
     this.text.textContent = this.getAttribute("label") ?? "";
     this.select.setAttribute("aria-label", this.getAttribute("label") ?? "");
-    if (name === "value") this.select.value = this.getAttribute("value");
+    if (name === "value") this.select.value = this.getAttribute("value") ?? "";
   }
 
   set options(options: SelectOption[]) {
     const current = this.select.value;
     this.select.replaceChildren(...options.map((o) => h("option", { value: o.value }, o.label)));
     if (options.some((o) => o.value === current)) this.select.value = current;
-    else if (this.hasAttribute("value")) this.select.value = this.getAttribute("value");
+    else if (this.hasAttribute("value")) this.select.value = this.getAttribute("value") ?? "";
   }
 
   get value() { return this.select.value; }

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { HAND_GESTURES, handPoseQuaternions } from "./hand-gestures.js";
+import { HAND_GESTURES, handPoseQuaternions, type HandPose } from "./hand-gestures.js";
 import { handLayout } from "../../rigging/api/hand-layout.js";
 import { makeOrthonormalBasisQuat } from "../../rigging/api/ik.js";
 import type { HumanoidRig } from "../../rigging/api/types.js";
@@ -8,36 +8,36 @@ import type { ClipName } from "./names.js";
 // --- 3. Procedural AnimationClip Synthesizer ---
 export function createHumanoidAnimations(rig: HumanoidRig): Record<ClipName, THREE.AnimationClip> {
   const { boneMap } = rig;
-  const eulerQ = (rx, ry, rz) => new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, "XYZ"));
+  const eulerQ = (rx: number, ry: number, rz: number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, "XYZ"));
 
-  const elbowFlexQ = (sideSign, rad) => {
+  const elbowFlexQ = (sideSign: number, rad: number) => {
     const axis = new THREE.Vector3(0.84, sideSign * 0.54, 0).normalize();
     return new THREE.Quaternion().setFromAxisAngle(axis, -rad);
   };
 
-  const makeQuatTrack = (boneName, times, quats) => {
-    const vals = [];
+  const makeQuatTrack = (boneName: string, times: number[], quats: Iterable<THREE.Quaternion>) => {
+    const vals: number[] = [];
     for (const q of quats) vals.push(q.x, q.y, q.z, q.w);
     return new THREE.QuaternionKeyframeTrack(`${boneName}.quaternion`, times, vals);
   };
 
-  const makePosTrack = (boneName, times, offsets, smooth = false) => {
+  const makePosTrack = (boneName: string, times: number[], offsets: readonly (readonly number[])[], smooth = false) => {
     const rest = boneMap.get(boneName).position;
-    const vals = [];
+    const vals: number[] = [];
     for (const o of offsets) vals.push(rest.x + o[0], rest.y + o[1], rest.z + o[2]);
     const track = new THREE.VectorKeyframeTrack(`${boneName}.position`, times, vals);
     if (smooth) track.setInterpolation(THREE.InterpolateSmooth);
     return track;
   };
 
-  const makeMorphTrack = (morphName, times, values, smooth = true) => {
+  const makeMorphTrack = (morphName: string, times: number[], values: number[], smooth = true) => {
     const track = new THREE.NumberKeyframeTrack(`.morphTargetInfluences[${morphName}]`, times, values);
     if (smooth) track.setInterpolation(THREE.InterpolateSmooth);
     return track;
   };
 
   // Per-joint finger/thumb curl tracks (curl = radians, bends toward the palm)
-  const fingerCurlTracks = (side, times, fingerCurls, thumbCurls, thumbPose = {}) => {
+  const fingerCurlTracks = (side: "L" | "R", times: number[], fingerCurls: HandPose["curl"], thumbCurls: HandPose["thumb"], thumbPose: Partial<HandPose> = {}) => {
     const pose = Array.isArray(fingerCurls[0]) || fingerCurls[0] > 0.5 ? HAND_GESTURES.grip : HAND_GESTURES.open;
     const quats = handPoseQuaternions(side, { ...pose, ...thumbPose, curl: fingerCurls, thumb: thumbCurls });
     return [...quats].map(([name, q]) => makeQuatTrack(name, times, times.map(() => q)));
@@ -61,7 +61,7 @@ export function createHumanoidAnimations(rig: HumanoidRig): Record<ClipName, THR
   }
 
   // 2. WALKING & 3. RUNNING
-  function buildGaitClip(name, duration, stride, kneeLift, armSwing, armBend, spineLean, bobAmp) {
+  function buildGaitClip(name: string, duration: number, stride: number, kneeLift: number, armSwing: number, armBend: number, spineLean: number, bobAmp: number) {
     const steps = 16;
     const times = [];
     const hipsP = [], hipsQ = [], spineQ = [], chestQ = [];

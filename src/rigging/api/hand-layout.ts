@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export function handLayout(s) {
+export function handLayout(s: number) {
   const pHand = new THREE.Vector3(s * 0.560, 1.025, 0.008);
   const palmDir = new THREE.Vector3(s * 0.30, -0.94, 0.08).normalize();
   const across = new THREE.Vector3(0, 0, 1).addScaledVector(palmDir, -palmDir.z).normalize();

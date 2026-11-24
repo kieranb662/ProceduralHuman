@@ -1,26 +1,39 @@
 import * as THREE from "three";
 import { buildGeometryFromArrays } from "../geometry/attributes.js";
 import { handLayout } from "../../../rigging/api/hand-layout.js";
-import { normalizeAndPackWeights } from "../../../rigging/api/skin-weights.js";
+import { normalizeAndPackWeights, type PackedWeights } from "../../../rigging/api/skin-weights.js";
+import type { HumanoidRig, KeyedMap } from "../../../rigging/api/types.js";
+import type { MeshPart } from "../types.js";
+
+/** The body mesh builder's shared vertex store, used so hand skin joins the arm without seams. */
+export interface BodySurfaceBuilder {
+  /** Adds a vertex and returns its index. */
+  addVertex(p: THREE.Vector3, w: PackedWeights): number;
+  /** Position of an existing vertex. */
+  point(i: number): THREE.Vector3;
+  triangle(a: number, b: number, c: number, slot: string, band?: number | null): void;
+  /** Index loop of the wrist opening the hand attaches to. */
+  wrist: number[];
+}
 
 // Palm sheets branch into open digit loops; all skin junctions share body indices.
-export function buildJointedHand(rig, side, s, surface) {
+export function buildJointedHand(rig: HumanoidRig, side: "L" | "R", s: number, surface: BodySurfaceBuilder): MeshPart[] {
   const { boneIndex } = rig;
   const hl = handLayout(s);
-  const bi = (n) => boneIndex.get(n);
+  const bi = (n: string) => boneIndex.get(n);
   const iHand = bi(`Hand_${side}`);
-  const pk = (arr) => normalizeAndPackWeights(arr);
-  const parts = [];
+  const pk = (arr: Iterable<readonly number[]>) => normalizeAndPackWeights(arr);
+  const parts: MeshPart[] = [];
   const { addVertex, point, triangle, wrist } = surface;
   const { pHand, palmDir, palmNormal, across } = hl;
-  const faces = [];
-  const emit = (a, b, c, outward) => {
+  const faces: [number, number, number][] = [];
+  const emit = (a: number, b: number, c: number, outward: THREE.Vector3) => {
     const normal = point(b).sub(point(a)).cross(point(c).sub(point(a)));
     if (normal.dot(outward) < 0) [b, c] = [c, b];
     faces.push([a, b, c]);
   };
-  const centerOf = (loop) => loop.reduce((p, i) => p.add(point(i)), new THREE.Vector3()).divideScalar(loop.length);
-  const stitch = (a, b) => {
+  const centerOf = (loop: number[]) => loop.reduce((p, i) => p.add(point(i)), new THREE.Vector3()).divideScalar(loop.length);
+  const stitch = (a: number[], b: number[]) => {
     const center = centerOf(a).add(centerOf(b)).multiplyScalar(0.5);
     let i = 0, j = 0;
     while (i < a.length || j < b.length) {
@@ -34,9 +47,9 @@ export function buildJointedHand(rig, side, s, surface) {
       }
     }
   };
-  const alignLoop = (loop, reference, tangent) => {
+  const alignLoop = (loop: number[], reference: number[], tangent: THREE.Vector3) => {
     const center = centerOf(loop);
-    const orientation = (ring) => point(ring[1]).sub(point(ring[0]))
+    const orientation = (ring: number[]) => point(ring[1]).sub(point(ring[0]))
       .cross(point(ring[0]).sub(center)).dot(tangent);
     if (orientation(loop) * orientation(reference) < 0) loop.reverse();
     const first = reference[0], target = point(first);
@@ -44,7 +57,7 @@ export function buildJointedHand(rig, side, s, surface) {
     loop.forEach((v, i) => { if (point(v).distanceToSquared(target) < point(loop[nearest]).distanceToSquared(target)) nearest = i; });
     return [...loop.slice(nearest), ...loop.slice(0, nearest)];
   };
-  const digitPairs = (names, t) => {
+  const digitPairs = (names: string[], t: number): [number, number][] => {
     const anchors = [0, 0.46, 0.76];
     return names.map((name, j) => {
       const left = j ? THREE.MathUtils.smoothstep(t, anchors[j] - 0.12, anchors[j] + 0.12) : 1;
@@ -52,9 +65,9 @@ export function buildJointedHand(rig, side, s, surface) {
       return [bi(name), left * right];
     });
   };
-  const digitWeight = (names, t) => pk(digitPairs(names, t));
+  const digitWeight = (names: string[], t: number) => pk(digitPairs(names, t));
   const iThumb = bi(`Thumb_${side}`);
-  const sheets = [[], []], thenarWeight = new Map();
+  const sheets: number[][][] = [[], []], thenarWeight = new Map<number, number>() as KeyedMap<number, number>;
   const cols = 22, rows = 10;
   for (let face = 0; face < 2; face++) {
     for (let r = 0; r <= rows; r++) {
@@ -77,7 +90,7 @@ export function buildJointedHand(rig, side, s, surface) {
           * Math.exp(-(((t - 0.45) / 0.30) ** 2));
         sheets[face][r].push(addVertex(p, pk([[iHand, 1 - fingerInfluence - thenarInfluence],
           [bi(`${f.name}1_${side}`), fingerInfluence], [iThumb, thenarInfluence]])));
-        thenarWeight.set(sheets[face][r].at(-1), thenarInfluence);
+        thenarWeight.set(sheets[face][r].at(-1)!, thenarInfluence);
       }
     }
   }
@@ -103,7 +116,7 @@ export function buildJointedHand(rig, side, s, surface) {
   const proximal = [...sheets[0][0], ...sheets[1][0].slice().reverse()];
   stitch(wrist, alignLoop(proximal, wrist, palmDir));
   const top = sheets[0][rows], bottom = sheets[1][rows];
-  const mids = new Map();
+  const mids = new Map<number, number>() as KeyedMap<number, number>;
   for (const c of [0, 4, 6, 10, 12, 16, 18, 22]) {
     // Outer palm edges are rounded, not boxed: bulge the side midpoints so the index/pinky tubes meet them smoothly.
     const bulge = c === 0 || c === cols ? across.clone().multiplyScalar(c ? 0.0026 : -0.0026) : new THREE.Vector3();
@@ -131,10 +144,13 @@ export function buildJointedHand(rig, side, s, surface) {
   }
   // Nail plates follow the dorsal skin profile (skinRadius(v)) and sit ~0.4 mm proud of it,
   // with a pale lunula at the base and a whiter free edge.
-  const addNail = (start, dir, skinRadius, length, bone, weightAt, padNormal = palmNormal) => {
+  const addNail = (
+    start: THREE.Vector3, dir: THREE.Vector3, skinRadius: (v: number) => number, length: number, bone: number,
+    weightAt: (v: number) => PackedWeights, padNormal: THREE.Vector3 = palmNormal,
+  ) => {
     const lateral = new THREE.Vector3().crossVectors(dir, padNormal).normalize();
     const dorsal = new THREE.Vector3().crossVectors(dir, lateral).normalize();
-    const p = [], uv = [], col = [], si = [], sw = [], ix = [];
+    const p: number[] = [], uv: number[] = [], col: number[] = [], si: number[] = [], sw: number[] = [], ix: number[] = [];
     for (let r = 0; r <= 8; r++) for (let c = 0; c <= 10; c++) {
       const u = c / 10 * 2 - 1, v = r / 8;
       const radius = skinRadius(v);
@@ -159,7 +175,7 @@ export function buildJointedHand(rig, side, s, surface) {
     }
     parts.push({ geo: buildGeometryFromArrays(p, uv, col, si, sw, ix), mat: 11, tag: `nail_${side}_${bone}` });
   };
-  const growDigit = (opening, centers, radii, weights, dir) => {
+  const growDigit = (opening: number[], centers: THREE.Vector3[], radii: number[], weights: PackedWeights[], dir: THREE.Vector3) => {
     let previous = opening;
     const lateral = new THREE.Vector3().crossVectors(dir, palmNormal).normalize();
     const dorsal = new THREE.Vector3().crossVectors(lateral, dir).normalize();
@@ -175,17 +191,17 @@ export function buildJointedHand(rig, side, s, surface) {
       stitch(previous, ring);
       previous = ring;
     }
-    const tip = addVertex(centers.at(-1).clone().addScaledVector(dir, 0.0012), weights.at(-1));
+    const tip = addVertex(centers.at(-1)!.clone().addScaledVector(dir, 0.0012), weights.at(-1)!);
     for (let j = 0; j < previous.length; j++) emit(previous[j], previous[(j + 1) % previous.length], tip, dir);
   };
   for (let fi = 0; fi < 4; fi++) {
     const f = hl.fingers[3 - fi], c = fi * 6;
-    const opening = [...top.slice(c, c + 5), mids.get(c + 4),
-      ...bottom.slice(c, c + 5).reverse(), mids.get(c)];
+    const opening = [...top.slice(c, c + 5), mids.get(c + 4)!,
+      ...bottom.slice(c, c + 5).reverse(), mids.get(c)!];
     const ts = [0, 0.07, 0.16, 0.27, 0.37, 0.43, 0.46, 0.49, 0.55, 0.65, 0.73, 0.76, 0.79, 0.85, 0.91, 0.96, 0.985, 1];
     const names = [1, 2, 3].map((j) => `${f.name}${j}_${side}`);
     const centers = ts.map((t) => f.P.clone().addScaledVector(f.dir, f.L * t));
-    const fingerRadius = (t) => {
+    const fingerRadius = (t: number) => {
       const knuckles = 0.10 * Math.exp(-(((t - 0.46) / 0.055) ** 2))
         + 0.06 * Math.exp(-(((t - 0.76) / 0.045) ** 2));
       return f.rad * (1 - 0.25 * t + knuckles) * (t > 0.91 ? Math.sqrt(Math.max(0.015, 1 - ((t - 0.91) / 0.092) ** 2)) : 1);
@@ -204,11 +220,11 @@ export function buildJointedHand(rig, side, s, surface) {
   // Thumb skeleton polyline (t: 0 CMC, 0.46 MCP, 0.76 IP, 1 tip). Rings sit perpendicular to the
   // local bone, blending direction across each joint, so knuckles don't shear when they flex.
   const thumbSegDirs = [[tStart, tMid], [tMid, tJ3], [tJ3, tTip]].map(([a, b]) => b.clone().sub(a).normalize());
-  const thumbCenter = (t) => t <= 0.46 ? tStart.clone().lerp(tMid, t / 0.46)
+  const thumbCenter = (t: number) => t <= 0.46 ? tStart.clone().lerp(tMid, t / 0.46)
     : t <= 0.76 ? tMid.clone().lerp(tJ3, (t - 0.46) / 0.30) : tJ3.clone().lerp(tTip, (t - 0.76) / 0.24);
   // Pronation ramps in along the metacarpal so the web joins the palm untwisted, reaching the
   // rig's hinge frame (hl.thumb.hingeNormals) by the MCP.
-  const thumbFrame = (t) => {
+  const thumbFrame = (t: number) => {
     const dir = thumbSegDirs[0].clone().lerp(thumbSegDirs[1], THREE.MathUtils.smoothstep(t, 0.40, 0.52))
       .lerp(thumbSegDirs[2], THREE.MathUtils.smoothstep(t, 0.70, 0.82)).normalize();
     const radial = across.clone().addScaledVector(dir, -across.dot(dir)).normalize();
@@ -218,18 +234,18 @@ export function buildJointedHand(rig, side, s, surface) {
     return { dir, lateral, palmar: new THREE.Vector3().crossVectors(lateral, dir).normalize() };
   };
   // Half-widths: broad MCP and IP knuckles, a slimmer proximal phalanx, a wide distal pad, rounded tip.
-  const thumbRadius = (t) => 0.0118 * (1 - 0.22 * t
+  const thumbRadius = (t: number) => 0.0118 * (1 - 0.22 * t
     - 0.05 * Math.exp(-(((t - 0.62) / 0.07) ** 2)) + 0.05 * Math.exp(-(((t - 0.46) / 0.05) ** 2))
     + 0.04 * Math.exp(-(((t - 0.76) / 0.04) ** 2)) + 0.04 * Math.exp(-(((t - 0.87) / 0.05) ** 2)))
     * (t > 0.9 ? Math.sqrt(Math.max(0.015, 1 - ((t - 0.9) / 0.103) ** 2)) : 1);
   const THUMB_FLAT = 0.82;
-  const thumbRingPoint = (t, angle, scale = 1) => {
+  const thumbRingPoint = (t: number, angle: number, scale = 1) => {
     const { lateral, palmar } = thumbFrame(t), r = thumbRadius(t) * scale;
     // Fleshy palmar pulp under the distal phalanx.
     const pad = Math.sin(angle) > 0 ? 1 + 0.10 * Math.sin(angle) * THREE.MathUtils.smoothstep(t, 0.78, 0.86) : 1;
     return thumbCenter(t).addScaledVector(lateral, Math.cos(angle) * r).addScaledVector(palmar, Math.sin(angle) * r * THUMB_FLAT * pad);
   };
-  const thumbTubeWeight = (t, hand) => pk([[iHand, hand], ...digitPairs(thumbNames, t).map(([b, w]) => [b, w * (1 - hand)])]);
+  const thumbTubeWeight = (t: number, hand: number) => pk([[iHand, hand], ...digitPairs(thumbNames, t).map(([b, w]) => [b, w * (1 - hand)])]);
   // Thenar / first-web bridge: loft the long radial palm opening into the thumb's first ring over
   // several rows, ramping skin from Hand to Thumb so abduction fans the web instead of pinching it.
   const T0 = 0.40, LOFT = 6;
@@ -237,9 +253,9 @@ export function buildJointedHand(rig, side, s, surface) {
   const lengths = thumbOpening.map((v, j) => point(v).distanceTo(point(thumbOpening[(j + 1) % thumbOpening.length])));
   const perimeter = lengths.reduce((a, b) => a + b, 0);
   const proximalSign = Math.sign(point(thumbOpening[0]).sub(point(thumbOpening[7])).dot(f0.lateral)) || 1;
-  let walked = -lengths.at(-1) / 2;
+  let walked = -lengths.at(-1)! / 2;
   const loftAngles = thumbOpening.map((_, j) => {
-    const u = (j ? (walked += lengths[j - 1]) : (walked += lengths.at(-1) / 2, 0)) / perimeter;
+    const u = (j ? (walked += lengths[j - 1]) : (walked += lengths.at(-1)! / 2, 0)) / perimeter;
     return proximalSign > 0 ? u * Math.PI * 2 : Math.PI - u * Math.PI * 2;
   });
   let previous = thumbOpening;
@@ -273,7 +289,7 @@ export function buildJointedHand(rig, side, s, surface) {
     tTip.distanceTo(tJ3) * 0.56, bi(thumbNames[2]), (v) => digitWeight(thumbNames, thumbNailStart + v * thumbNailSpan), hl.thumb.hingeNormals[2]);
   // A concave thumb web has no radial "outward"; propagate the palm's winding
   // across shared edges instead of guessing a normal at the saddle.
-  const edges = new Map(), adjacent = faces.map(() => []);
+  const edges = new Map<string, { f: number; a: number }>(), adjacent: [number, boolean][][] = faces.map(() => []);
   faces.forEach((face, f) => face.forEach((a, j) => {
     const b = face[(j + 1) % 3], key = `${Math.min(a, b)},${Math.max(a, b)}`;
     const prior = edges.get(key);

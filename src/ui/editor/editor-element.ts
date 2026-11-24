@@ -12,7 +12,8 @@ export interface EditorChangeDetail {
  * bound and connected, and reports edits through a composed `ph-change` event.
  */
 export abstract class PhEditorElement<T> extends PhElement {
-  protected target: T | null = null;
+  /** The bound target; set through each editor's typed setter before render() runs. */
+  protected target!: T;
 
   constructor(styles: string[] = []) {
     super([BASE_STYLES, `:host { display: grid; gap: 16px; }`, ...styles]);

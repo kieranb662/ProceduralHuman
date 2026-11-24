@@ -1,6 +1,19 @@
 import * as THREE from "three";
 import { handLayout } from "../../rigging/api/hand-layout.js";
 
+type Curl3 = [number, number, number];
+
+/** Finger curl per joint (radians), either shared by all fingers or per finger, plus thumb and spread. */
+export interface HandPose {
+  curl: Curl3 | Curl3[];
+  /** Overrides the index finger's curl (e.g. pointing). */
+  indexCurl?: Curl3;
+  thumb: Curl3;
+  opposition: number;
+  abduction: number;
+  spread: number;
+}
+
 export const HAND_GESTURES = {
   relaxed: { curl: [0.16, 0.24, 0.12], thumb: [0.10, 0.14, 0.08], opposition: 0.18, abduction: 0, spread: 0 },
   open: { curl: [0.02, 0.03, 0.02], thumb: [0, 0.04, 0.02], opposition: 0.10, abduction: 0.12, spread: 0.04 },
@@ -9,16 +22,17 @@ export const HAND_GESTURES = {
   point: { curl: [1.45, 1.62, 0.95], indexCurl: [0.015, 0.035, 0.02], thumb: [0.45, 0.53, 0.59], opposition: 0.64, abduction: 0.16, spread: 0 },
   thumbsUp: { curl: [1.45, 1.62, 0.95], thumb: [0, 0.05, -0.06], opposition: 0.20, abduction: 0.50, spread: 0 },
   spread: { curl: [0.03, 0.04, 0.02], thumb: [0, 0.02, 0], opposition: 0.15, abduction: 0.60, spread: 1 },
-};
+} satisfies Record<string, HandPose>;
 
-export function handPoseQuaternions(side, pose) {
-  const s = side === "L" ? 1 : -1, hl = handLayout(s), out = new Map();
-  const axisQ = (axis, angle) => new THREE.Quaternion().setFromAxisAngle(axis, angle);
+/** Local quaternions for every finger and thumb bone of one hand in the given pose. */
+export function handPoseQuaternions(side: "L" | "R", pose: HandPose): Map<string, THREE.Quaternion> {
+  const s = side === "L" ? 1 : -1, hl = handLayout(s), out = new Map<string, THREE.Quaternion>();
+  const axisQ = (axis: THREE.Vector3, angle: number) => new THREE.Quaternion().setFromAxisAngle(axis, angle);
   hl.fingers.forEach((f, fi) => {
     const axis = new THREE.Vector3().crossVectors(f.dir, hl.palmNormal).normalize();
     const individual = Array.isArray(pose.curl[0]);
-    const curls = fi === 0 && pose.indexCurl ? pose.indexCurl
-      : individual ? pose.curl[fi] : pose.curl;
+    const curls: Curl3 = fi === 0 && pose.indexCurl ? pose.indexCurl
+      : individual ? (pose.curl as Curl3[])[fi] : (pose.curl as Curl3);
     const fan = [0.20, 0.035, -0.12, -0.29][fi] * pose.spread;
     for (let j = 1; j <= 3; j++) {
       const q = axisQ(axis, curls[j - 1] * (individual ? 1 : 1 + fi * 0.025));

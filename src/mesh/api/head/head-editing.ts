@@ -62,7 +62,7 @@ export function createHeadEditing(ctx: HeadEditingContext) {
     for (const bone of rig.bones) {
       deltas.set(bone.name, preview.rig.boneMap.get(bone.name).position.clone().sub(restPose.position.get(bone.name)));
     }
-    const retargetFace = FACIAL_BONES.some((name) => deltas.get(name).lengthSq() > 1e-16);
+    const retargetFace = FACIAL_BONES.some((name) => deltas.get(name)!.lengthSq() > 1e-16);
     const resumeFace = retargetFace ? ctx.suspendFaceAnimation() : null;
     for (const bone of rig.bones) {
       const next = preview.rig.boneMap.get(bone.name).position;
@@ -82,7 +82,7 @@ export function createHeadEditing(ctx: HeadEditingContext) {
     }
     const previous = skinnedMesh.geometry;
     skinnedMesh.geometry = geometry;
-    const influences = skinnedMesh.morphTargetInfluences;
+    const influences = skinnedMesh.morphTargetInfluences ?? [];
     skinnedMesh.updateMorphTargets();
     influences.fill(0);
     skinnedMesh.morphTargetInfluences = influences;

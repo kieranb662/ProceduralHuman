@@ -49,7 +49,7 @@ export class PhSlider extends PhElement {
     this.input.step = this.getAttribute("step") ?? "0.01";
     this.input.disabled = this.hasAttribute("disabled");
     this.input.setAttribute("aria-label", this.getAttribute("label") ?? "");
-    if (this.hasAttribute("value")) this.input.value = this.getAttribute("value");
+    if (this.hasAttribute("value")) this.input.value = this.getAttribute("value") ?? "";
     this.renderValue();
   }
 

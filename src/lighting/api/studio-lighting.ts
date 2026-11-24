@@ -122,7 +122,7 @@ export function createStudioLighting(initial: StudioLightingChanges = {}) {
       rim.dispose();
       hemisphere.dispose();
       environmentTarget?.dispose();
-      if (environmentScene?.environment === environmentTarget?.texture) environmentScene.environment = null;
+      if (environmentScene && environmentScene.environment === environmentTarget?.texture) environmentScene.environment = null;
     },
   };
 }

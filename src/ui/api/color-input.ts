@@ -27,7 +27,7 @@ export class PhColorInput extends PhElement {
   attributeChangedCallback(name: string) {
     this.text.textContent = this.getAttribute("label") ?? "";
     this.input.setAttribute("aria-label", this.getAttribute("label") ?? "");
-    if (name === "value") this.input.value = this.getAttribute("value");
+    if (name === "value") this.input.value = this.getAttribute("value") ?? "";
   }
 
   get value() { return this.input.value; }

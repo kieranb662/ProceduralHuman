@@ -1,9 +1,9 @@
 import { smoothstep } from "../../shared/math.js";
-import { defaultCanvasFactory, finish, mk } from "./canvas.js";
+import { type CanvasFactory, defaultCanvasFactory, finish, mk } from "./canvas.js";
 import { fbm, hash2 } from "./noise.js";
 
 /** Enamel (teeth) or mucosa (gums/tongue) microdetail. */
-export function makeOralTextures(enamel, createCanvas = defaultCanvasFactory) {
+export function makeOralTextures(enamel: boolean, createCanvas: CanvasFactory = defaultCanvasFactory) {
   const S = 256, col = mk(S, createCanvas), bmp = mk(S, createCanvas);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {

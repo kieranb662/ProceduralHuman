@@ -12,7 +12,8 @@ import { buildTeethArc } from "./teeth.js";
 import { normalizeAndPackWeights } from "../../../rigging/api/skin-weights.js";
 import { gauss, smoothstep } from "../../../shared/math.js";
 import type { HumanoidRig } from "../../../rigging/api/types.js";
-import type { HeadDesign, HeadParts } from "./types.js";
+import type { HeadDesign, HeadParts, MouthLoopVertex } from "./types.js";
+import type { MeshPart } from "../types.js";
 
 export function buildHeadAndFaceParts(rig: HumanoidRig, design: HeadDesign | null = null): HeadParts {
   const defaults: HeadDesign = { transforms: {}, features: {}, strokes: [] };
@@ -21,14 +22,14 @@ export function buildHeadAndFaceParts(rig: HumanoidRig, design: HeadDesign | nul
   return Object.assign(parts, { design: structuredClone(design ?? defaults) });
 }
 
-export function buildBaseHeadAndFaceParts(rig) {
+export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
   const { boneIndex, worldRest } = rig;
   const headCenter = new THREE.Vector3(0, 1.662, 0.008);
   const eyeL = worldRest.get("Eye_L");
   const eyeR = worldRest.get("Eye_R");
   const mouthY = 1.595;
 
-  const evalForeheadSurfaceZ = (x, y) => {
+  const evalForeheadSurfaceZ = (x: number, y: number) => {
     const dy = y - headCenter.y;
     const rx = 0.088, ry = 0.120, rz = 0.106;
     const cosT = THREE.MathUtils.clamp(dy / ry, -0.99, 0.99);
@@ -56,7 +57,7 @@ export function buildBaseHeadAndFaceParts(rig) {
   }
   const phiSamples = Array.from({ length: 113 }, (_, c) => (c / 112 - 0.5) * Math.PI * 2);
   for (let c = -72; c <= 72; c++) phiSamples.push(c * 0.0075);
-  const sortedSamples = (samples) => samples.sort((a, b) => a - b)
+  const sortedSamples = (samples: number[]) => samples.sort((a, b) => a - b)
     .filter((value, i, sorted) => i === 0 || value - sorted[i - 1] > 0.0001);
   const thetas = sortedSamples(thetaSamples);
   const jawRows = 28;
@@ -64,14 +65,14 @@ export function buildBaseHeadAndFaceParts(rig) {
   const latSegs = thetas.length - 1 + jawRows;
   const lonSegs = phis.length - 1;
   const stride = lonSegs + 1;
-  const positions = [];
-  const uvs = [];
-  const colors = [];
-  const faceSurface = [];
-  const skinIdx = [];
-  const skinWgt = [];
-  const indices = [];
-  const neckAttachment = [];
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const colors: number[] = [];
+  const faceSurface: number[] = [];
+  const skinIdx: number[] = [];
+  const skinWgt: number[] = [];
+  const indices: number[] = [];
+  const neckAttachment: number[] = [];
 
   const bHead = boneIndex.get("Head");
   const bNeck = boneIndex.get("Neck");
@@ -352,7 +353,7 @@ export function buildBaseHeadAndFaceParts(rig) {
   headGeo.userData.skullStride = stride;
 
   // Trace the real boundary loop of the mouth opening so the inner mouth shares the lips' exact vertices
-  const edgeCount = new Map<any, any>();
+  const edgeCount = new Map<string, number>();
   for (let i = 0; i < indices.length; i += 3) {
     for (let k = 0; k < 3; k++) {
       const p = indices[i + k], q = indices[i + ((k + 1) % 3)];
@@ -360,35 +361,35 @@ export function buildBaseHeadAndFaceParts(rig) {
       edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1);
     }
   }
-  const nearMouth = (v) => Math.abs(positions[v * 3]) < 0.04 && Math.abs(positions[v * 3 + 1] - mouthY) < 0.012 && positions[v * 3 + 2] > 0.08;
-  const adj = new Map<any, any>();
+  const nearMouth = (v: number) => Math.abs(positions[v * 3]) < 0.04 && Math.abs(positions[v * 3 + 1] - mouthY) < 0.012 && positions[v * 3 + 2] > 0.08;
+  const adj = new Map<number, number[]>();
   for (const [key, n] of edgeCount) {
     if (n !== 1) continue;
     const [p, q] = key.split("_").map(Number);
     if (!nearMouth(p) || !nearMouth(q)) continue;
     if (!adj.has(p)) adj.set(p, []);
     if (!adj.has(q)) adj.set(q, []);
-    adj.get(p).push(q);
-    adj.get(q).push(p);
+    adj.get(p)!.push(q);
+    adj.get(q)!.push(p);
   }
-  const loopIdx = [];
+  const loopIdx: number[] = [];
   if (adj.size) {
     const seen = new Set<number>();
     let cur = adj.keys().next().value;
     while (cur !== undefined && !seen.has(cur)) {
       seen.add(cur);
       loopIdx.push(cur);
-      cur = adj.get(cur).find((nb) => !seen.has(nb));
+      cur = adj.get(cur)!.find((nb) => !seen.has(nb));
     }
   }
-  const mouthLoop = loopIdx.map((v) => ({
+  const mouthLoop: MouthLoopVertex[] = loopIdx.map((v) => ({
     pos: new THREE.Vector3(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]),
     idx: skinIdx.slice(v * 4, v * 4 + 4),
     wgt: skinWgt.slice(v * 4, v * 4 + 4),
   }));
   headGeo.userData.mouthLoopIndices = loopIdx;
 
-  const parts = [{ geo: headGeo, mat: 0, tag: "head" }];
+  const parts: MeshPart[] = [{ geo: headGeo, mat: 0, tag: "head" }];
 
   const eyeRadius = 0.0130;
   for (const [side, s] of SIDES) {

@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run demo:build
+
+  visual:
+    name: Visual regression (three ${{ matrix.three }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest and newest three releases inside the peer range (the skin shader patches three's chunks).
+        three: ["0.186.0", "0.187.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save three@${{ matrix.three }}
+      - run: npx playwright install --with-deps chromium
+      # Linux baselines are written on first run (see README "Visual tests"); existing ones are compared.
+      - run: npx playwright test --update-snapshots=missing
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-three-${{ matrix.three }}
+          path: |
+            playwright-report/
+            test-results/
+            test/visual/__screenshots__/*-linux.png
+          if-no-files-found: ignore
