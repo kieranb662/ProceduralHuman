@@ -55,6 +55,6 @@ The library is being extracted from the original single-file prototype in stages
 1. ✅ Package scaffolding; prototype runs unchanged as the Vite demo (`examples/default-male`).
 2. ✅ Prototype library code split into section modules under `src/` (verified identical output in the demo).
 3. ✅ Public types (`ProceduralCharacter`, `CharacterOptions`, `HeadDesign`, `Palette`, ...); headless unit tests.
-4. ⏳ Data-driven code generation (designs exported as data + package import) and prebuilt humans.
+4. ✅ Data-driven code generation (`captureHumanDesign` + `generateHumanModule`) and the first bundled preset (`defaultAdultMale`).
 5. ⏳ Split `createAdultMaleCharacter` orchestration; lighting, physics and editor layers; web components.
 6. ⏳ `rng` option, `dispose()`, unit tests; strict TypeScript; CI publishing.

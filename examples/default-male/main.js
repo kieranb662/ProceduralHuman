@@ -2,9 +2,9 @@
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
     import {
-      TORSO_DETAILS, applyHeadDesign, applyHeadSculptStroke, buildBaseHeadAndFaceParts, buildHeadAndFaceParts,
-      createAdultMaleCharacter, createProceduralMaterials, handLayout, headSculptTopology, headTargetTags,
-      restoreNeckJoinNormals, syncHeadMouthRim, updateHeadPartNormals, validateHeadDesign,
+      TORSO_DETAILS, applyHeadSculptStroke, captureHumanDesign, createAdultMaleCharacter, defineHuman,
+      generateHumanModule, handLayout, headTargetTags, humanModuleFileName, restoreNeckJoinNormals,
+      updateHeadPartNormals, validateHeadDesign,
     } from "@kieranb662/procedural-human";
 
     // =========================================================================
@@ -232,39 +232,36 @@
       materialSlot.appendChild(option);
     });
 
+    const humanName = "Custom Human";
+    // Every attribute of the live character (plus uncommitted head edits) as a standalone module.
+    function humanModuleSource() {
+      return generateHumanModule(captureHumanDesign(character, { name: humanName, head: headDesign }));
+    }
+    function downloadText(fileName, text) {
+      const url = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    const humanFileName = () => humanModuleFileName(defineHuman({ name: humanName }));
+
     function updateMaterialSource() {
-      const defaults = JSON.stringify(materialPalette, null, 2);
-      materialSource.value = createProceduralMaterials.toString().replace(
-        "function createProceduralMaterials(palette = {}) {",
-        `function createProceduralMaterials(palette = {}) {
-      const defaults = ${defaults};
-      palette = {
-        ...defaults, ...palette,
-        textures: { ...defaults.textures, ...palette.textures },
-        materials: defaults.materials.map((values, index) => ({
-          ...values, ...palette.materials?.[index],
-        })),
-      };`
-      );
+      materialSource.value = humanModuleSource();
     }
 
     function refreshCharacterMaterials() {
       clearTimeout(materialRefreshTimer);
       materialRefreshTimer = null;
-      const nextMaterials = createProceduralMaterials(materialPalette);
-      const previousMaterials = character.skinnedMesh.material;
+      character.setPalette(materialPalette);
+      const nextMaterials = character.skinnedMesh.material;
       const wireframe = document.getElementById("wireframeToggle").checked;
       nextMaterials.forEach((material) => { material.wireframe = wireframe; });
-      character.skinnedMesh.material = nextMaterials;
-      character.refreshClothingMaterials();
       if (headPreviewMesh) headPreviewMesh.material = nextMaterials;
-      const textures = new Set();
-      previousMaterials.forEach((material) => {
-        if (material.map) textures.add(material.map);
-        if (material.bumpMap) textures.add(material.bumpMap);
-        material.dispose();
-      });
-      textures.forEach((texture) => texture.dispose());
+      updateMaterialSource();
       materialStatus.textContent = "Preview updated.";
     }
 
@@ -453,26 +450,19 @@
       if (materialRefreshTimer !== null) refreshCharacterMaterials();
       try {
         await navigator.clipboard.writeText(materialSource.value);
-        materialStatus.textContent = "Function copied.";
+        materialStatus.textContent = "Human module copied.";
       } catch (error) {
         console.error("Could not copy procedural materials:", error);
         materialSource.focus();
         materialSource.select();
-        materialStatus.textContent = "Clipboard unavailable. Function selected; copy manually or export .js.";
+        materialStatus.textContent = "Clipboard unavailable. Module selected; copy manually or export it.";
       }
     });
     document.getElementById("exportMaterialsBtn").addEventListener("click", () => {
       if (materialRefreshTimer !== null) refreshCharacterMaterials();
-      const blob = new Blob([`${materialSource.value}\n`], { type: "text/javascript" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "createProceduralMaterials.js";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      materialStatus.textContent = "Function exported.";
+      updateMaterialSource();
+      downloadText(humanFileName(), materialSource.value);
+      materialStatus.textContent = "Human module exported.";
     });
     const toolTabs = [["rigTabBtn", "rigTools"], ["materialsTabBtn", "materialTools"],
       ["headTabBtn", "headTools"], ["torsoTabBtn", "torsoTools"]];
@@ -493,7 +483,6 @@
       });
     }
     showMaterialControls();
-    updateMaterialSource();
 
     const headStorageKey = "procedural-human-head-design-v1";
     const headStatus = document.getElementById("headStatus");
@@ -531,17 +520,7 @@
     }
 
     function updateHeadSource() {
-      let source = buildHeadAndFaceParts.toString().replace(
-        /const defaults = [\s\S]*?;\n/,
-        `const defaults = ${JSON.stringify(headDesign, null, 2)};\n`
-      );
-      if (!source.includes("function buildBaseHeadAndFaceParts(")) {
-        const helpers = [headTargetTags, validateHeadDesign, headSculptTopology, updateHeadPartNormals,
-          syncHeadMouthRim, applyHeadSculptStroke, applyHeadDesign, buildBaseHeadAndFaceParts];
-        source = source.replace("const parts = buildBaseHeadAndFaceParts(rig);",
-          `${helpers.map((fn) => fn.toString()).join("\n\n")}\n\n      const parts = buildBaseHeadAndFaceParts(rig);`);
-      }
-      headSource.value = source;
+      headSource.value = humanModuleSource();
       document.getElementById("undoHeadBtn").disabled = headUndo.length === 0;
       document.getElementById("redoHeadBtn").disabled = headRedo.length === 0;
     }
@@ -889,29 +868,23 @@
       updateHeadSource();
       try {
         await navigator.clipboard.writeText(headSource.value);
-        headStatus.textContent = "Replacement head function copied.";
+        headStatus.textContent = "Human module copied.";
       } catch (error) {
         console.error("Could not copy procedural head:", error);
         headSource.focus();
         headSource.select();
-        headStatus.textContent = "Clipboard unavailable. Function selected; copy manually or export .js.";
+        headStatus.textContent = "Clipboard unavailable. Module selected; copy manually or export it.";
       }
     });
     document.getElementById("exportHeadBtn").addEventListener("click", () => {
       finishHeadGesture();
       updateHeadSource();
-      const url = URL.createObjectURL(new Blob([`${headSource.value}\n`], { type: "text/javascript" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "buildHeadAndFaceParts.js";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      headStatus.textContent = "Replacement head function exported.";
+      downloadText(humanFileName(), headSource.value);
+      headStatus.textContent = "Human module exported.";
     });
     showHeadControls();
     updateHeadSource();
+    updateMaterialSource();
     try {
       const stored = localStorage.getItem(headStorageKey);
       if (stored) {

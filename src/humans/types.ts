@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import type { BaseAnimation, ClipName, FaceExpression, UpperAnimation } from "../animations/api/names.js";
 import type { HandGesture } from "../animations/api/hand-gestures.js";
+import type { FaceSliders } from "../animations/api/face-sliders.js";
 import type { Palette } from "../materials/api/palette.js";
 import type { TorsoDetailChanges, TorsoDetails } from "../mesh/api/body/torso.js";
 import type { ClothingItem, ClothingSlot, Outfit } from "../mesh/api/clothing/items.js";
@@ -28,14 +29,6 @@ export interface CharacterUpdateOptions {
   autoGaze?: boolean;
   /** World-space target for the right-arm "reaching" IK state. */
   reachTarget?: THREE.Vector3 | null;
-}
-
-/** Manual facial controls applied after the expression clips each frame. */
-export interface FaceSliders {
-  jaw: number; smile: number; pucker: number; browUp: number; browDown: number; cheek: number;
-  tongueOut: number; tongueCurl: number;
-  upperLip: number; lowerLip: number; lidTop: number; lidBot: number;
-  eyeX: number; eyeY: number; nose: number; ears: number;
 }
 
 export interface ClothingSlotState {
@@ -73,9 +66,13 @@ export interface ProceduralCharacter {
   /** Advance animation by dt seconds. Call once per frame. */
   update(dt: number, opts?: CharacterUpdateOptions): void;
 
+  /** The clip/state currently selected on each animation layer. */
+  readonly animationState: { base: BaseAnimation; upper: UpperAnimation; face: FaceExpression };
+
   setHandGesture(name: HandGesture, side?: "both" | "L" | "R"): void;
   readonly handGestures: { L: HandGesture; R: HandGesture };
 
+  /** The committed head design (updated by commitHeadPreview). */
   readonly headDesign: HeadDesign;
   createHeadPreview(design: HeadDesign): HeadPreview;
   commitHeadPreview(preview: HeadPreview): void;
@@ -84,6 +81,11 @@ export interface ProceduralCharacter {
   setOutfit(outfit?: Outfit): void;
   /** Re-point clothing meshes at skinnedMesh.material after replacing the materials. */
   refreshClothingMaterials(): void;
+
+  /** Full current palette: colors, resolved texture settings and the live surface values of every slot. */
+  readonly palette: Required<Palette>;
+  /** Rebuilds all materials from a palette, disposing the old ones and their textures. */
+  setPalette(palette: Palette): void;
 
   readonly torsoDetails: TorsoDetails;
   setTorsoDetails(changes: TorsoDetailChanges): void;

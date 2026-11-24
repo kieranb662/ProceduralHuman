@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { createHumanoidAnimations } from "../animations/api/clips.js";
 import { HAND_GESTURES, handPoseQuaternions } from "../animations/api/hand-gestures.js";
 import { createProceduralMaterials } from "../materials/api/procedural-materials.js";
+import { DEFAULT_PALETTE_COLORS, disposeMaterials, readMaterialSurfaces, type Palette } from "../materials/api/palette.js";
+import { resolveTextureSettings } from "../textures/api/settings.js";
 import { buildBaseBodyParts } from "../mesh/api/body/body-parts.js";
 import { configureTorsoDetails, sculptTorso } from "../mesh/api/body/torso.js";
 import { buildClothingGeometry, fitClothingToBody } from "../mesh/api/clothing/build.js";
@@ -17,12 +19,15 @@ import { BASE_ANIMATIONS, FACE_EXPRESSIONS, UPPER_ANIMATIONS } from "../animatio
 import type { BaseAnimation, FaceExpression, FaceExpressionClip, UpperAnimation, UpperAnimationClip } from "../animations/api/names.js";
 import type { HandGesture } from "../animations/api/hand-gestures.js";
 import type { ClothingSlot } from "../mesh/api/clothing/items.js";
-import type { CharacterOptions, ClothingSlotState, CharacterUpdateOptions, FaceSliders, HeadPreview, ProceduralCharacter } from "./types.js";
+import { DEFAULT_FACE_SLIDERS, type FaceSliders } from "../animations/api/face-sliders.js";
+import type { CharacterOptions, ClothingSlotState, CharacterUpdateOptions, HeadPreview, ProceduralCharacter } from "./types.js";
 
 // --- 5. Master Factory: createAdultMaleCharacter(options) ---
 export function createAdultMaleCharacter(options: CharacterOptions = {}): ProceduralCharacter {
   const rig = createHumanoidSkeleton();
-  const materials = createProceduralMaterials(options.palette, { createCanvas: options.createCanvas });
+  const createCanvas = options.createCanvas;
+  let palette: Palette = options.palette ?? {};
+  const materials = createProceduralMaterials(palette, { createCanvas });
 
   const bodyParts = buildBaseBodyParts(rig);
   const bodyGeo = bodyParts[0].geo;
@@ -39,6 +44,7 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
   const cavGroupIdx = rawParts.findIndex((p) => p.tag === "cavity");
 
   buildFacialMorphTargets(merged, referenceRig, headGroupIdx, cavGroupIdx, referenceGeometry, headParts.design);
+  let headDesign = structuredClone(headParts.design);
 
   const skinnedMesh = new THREE.SkinnedMesh(merged, materials);
   skinnedMesh.name = "AdultMaleSkinnedMesh";
@@ -132,6 +138,24 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
     for (const [slot, item] of Object.entries(outfit)) validateClothing(slot, item);
     for (const slot of Object.keys(clothingSlots)) setClothing(slot, outfit[slot] ?? "none");
   }
+  function setPalette(next: Palette) {
+    const nextMaterials = createProceduralMaterials(next, { createCanvas });
+    const previousMaterials = skinnedMesh.material as THREE.Material[];
+    skinnedMesh.material = nextMaterials;
+    refreshClothingMaterials();
+    disposeMaterials(previousMaterials);
+    palette = structuredClone(next);
+  }
+  function currentPalette(): Required<Palette> {
+    return {
+      skin: palette.skin ?? DEFAULT_PALETTE_COLORS.skin,
+      shirt: palette.shirt ?? DEFAULT_PALETTE_COLORS.shirt,
+      shorts: palette.shorts ?? DEFAULT_PALETTE_COLORS.shorts,
+      hair: palette.hair ?? DEFAULT_PALETTE_COLORS.hair,
+      textures: resolveTextureSettings(palette.textures),
+      materials: readMaterialSurfaces(skinnedMesh.material as THREE.Material[]),
+    };
+  }
   function refreshClothingMaterials() {
     for (const slot of Object.values(clothingSlots)) {
       if (slot.mesh) slot.mesh.material = skinnedMesh.material[slot.mesh.geometry.userData.materialIndex];
@@ -172,11 +196,7 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
   let upperBlend = 0;
   let reachBlend = 0;
 
-  const faceSliders: FaceSliders = {
-    jaw: 0, smile: 0, pucker: 0, browUp: 0, browDown: 0, cheek: 0,
-    tongueOut: 0, tongueCurl: 0,
-    upperLip: 0, lowerLip: 0, lidTop: 0, lidBot: 0, eyeX: 0, eyeY: 0, nose: 0, ears: 0,
-  };
+  const faceSliders: FaceSliders = { ...DEFAULT_FACE_SLIDERS };
 
   const gazeState = {
     targetX: 0, targetY: 0, currentX: 0, currentY: 0,
@@ -275,6 +295,7 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
       }
     }
     previous.dispose();
+    headDesign = structuredClone(preview.parts.design);
   }
 
   const baseArmQuats = new Map();
@@ -609,8 +630,12 @@ export function createAdultMaleCharacter(options: CharacterOptions = {}): Proced
     setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink, update,
     setHandGesture,
     get handGestures() { return { ...handGestures }; },
-    headDesign: structuredClone(headParts.design), createHeadPreview, commitHeadPreview,
+    get headDesign() { return structuredClone(headDesign); },
+    createHeadPreview, commitHeadPreview,
+    get animationState() { return { base: activeBase, upper: activeUpper, face: activeFace }; },
     setClothing, setOutfit, refreshClothingMaterials,
+    get palette() { return currentPalette(); },
+    setPalette,
     get torsoDetails() { return structuredClone(torsoDetails); },
     setTorsoDetails, resetTorsoDetails,
   };

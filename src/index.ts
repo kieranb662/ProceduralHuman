@@ -11,4 +11,6 @@ export * from "./lighting/api/index.js";
 export * from "./codegen/api/index.js";
 export * from "./physics/api/index.js";
 export * from "./humans/create-character.js";
+export * from "./humans/create-human.js";
+export * from "./humans/design.js";
 export type * from "./humans/types.js";

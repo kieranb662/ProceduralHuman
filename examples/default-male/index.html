@@ -320,11 +320,11 @@
           <button id="redoHeadBtn" class="py-2 rounded-xl bg-slate-800 disabled:opacity-40" disabled>Redo</button>
           <button id="resetHeadBtn" class="py-2 rounded-xl bg-slate-800">Reset edits</button>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Replace only the buildHeadAndFaceParts function in this HTML with the generated function below. It includes the base sculpt, saved part transforms, and procedural brush strokes. Existing geometry helpers, THREE, and BufferGeometryUtils are required.</p>
-        <textarea id="headSource" readonly aria-label="Generated procedural head function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Exports this human as a standalone ES module: every attribute (head, materials, torso, outfit, pose) as data plus a create function. Drop it into any project with @kieranb662/procedural-human and three installed.</p>
+        <textarea id="headSource" readonly aria-label="Generated human module" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
         <div class="grid grid-cols-2 gap-2">
-          <button id="copyHeadBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
-          <button id="exportHeadBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+          <button id="copyHeadBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy module</button>
+          <button id="exportHeadBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .human.js</button>
         </div>
         <p id="headStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
       </section>
@@ -349,14 +349,14 @@
       </section>
       <section class="space-y-2">
         <div class="flex justify-between items-center">
-          <h2 class="font-semibold text-slate-200">Reusable function</h2>
+          <h2 class="font-semibold text-slate-200">Export human</h2>
           <button id="resetMaterialsBtn" class="text-sky-400 hover:text-sky-300 underline">Reset all</button>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">Copy or download createProceduralMaterials(palette = {}). Requires THREE and a browser document. Override colors via palette.skin/shirt/shorts/hair, procedural settings via palette.textures, and slot properties via palette.materials[index]. Skin uses skinTileSize in meters (microdetail only; broad tone does not tile), skinPoreDepth (0-2), skinColorVariation, skinRoughnessVariation, skinScattering (0-1), and skinThicknessScale (0.25-4). Pore relief is footprint-filtered; skinDetail controls pore and tone detail. Thickness masks assume this prototype's meter-scale neutral anatomy; standard shadow maps can suppress self-shadowed backscatter. Exported skin bumpScale is in meters. Keep the shader hooks when reusing these materials.</p>
-        <textarea id="materialSource" readonly aria-label="Generated procedural materials function" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
+        <p class="text-[11px] text-slate-400 leading-relaxed">Exports this human as a standalone ES module: every attribute (head, materials, torso, outfit, pose) as data plus a create function. Drop it into any project with @kieranb662/procedural-human and three installed.</p>
+        <textarea id="materialSource" readonly aria-label="Generated human module" spellcheck="false" class="select-text w-full h-36 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] font-mono"></textarea>
         <div class="grid grid-cols-2 gap-2">
-          <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy function</button>
-          <button id="exportMaterialsBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .js</button>
+          <button id="copyMaterialsBtn" class="py-2 rounded-xl bg-sky-500 text-slate-950 font-medium">Copy module</button>
+          <button id="exportMaterialsBtn" class="py-2 rounded-xl bg-slate-800 text-slate-200 font-medium">Export .human.js</button>
         </div>
         <p id="materialStatus" role="status" aria-live="polite" class="text-[11px] text-slate-400"></p>
       </section>

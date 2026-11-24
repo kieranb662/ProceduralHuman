@@ -1,6 +1,9 @@
 /**
- * @kieranb662/procedural-human/humans: the character factory plus prebuilt,
- * procedurally generated humans codified as design data and bundled with the package.
+ * @kieranb662/procedural-human/humans: the character factories, the HumanDesign format,
+ * and prebuilt, procedurally generated humans bundled with the package.
  */
 export * from "./create-character.js";
+export * from "./create-human.js";
+export * from "./design.js";
 export * from "./types.js";
+export * from "./presets/index.js";

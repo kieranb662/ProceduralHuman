@@ -5,20 +5,9 @@ import {
   createAdultMaleCharacter,
   createHumanoidSkeleton,
   validateHeadDesign,
-  type CanvasFactory,
 } from "../src/index.js";
+import { stubCanvas } from "./helpers/stub-canvas.js";
 
-/** A no-op 2D canvas: every context method is callable and returns something chainable. */
-const stubCanvas: CanvasFactory = (size) => {
-  const noop: any = new Proxy(function () {}, { get: () => noop, apply: () => noop });
-  const ctx = new Proxy({}, {
-    get: (_, key) => key === "createImageData"
-      ? (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h })
-      : noop,
-    set: () => true,
-  });
-  return { width: size, height: size, getContext: () => ctx } as unknown as HTMLCanvasElement;
-};
 
 describe("rig", () => {
   it("builds the 84-bone humanoid skeleton with unique names", () => {

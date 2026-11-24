@@ -8,7 +8,7 @@ import { makeSkinTextures } from "../../textures/api/skin.js";
 import { makeWeaveTextures } from "../../textures/api/weave.js";
 import { applyOralOcclusion } from "./shaders/oral-occlusion.js";
 import { applySkinMapping } from "./shaders/skin-shader.js";
-import type { Palette } from "./palette.js";
+import { DEFAULT_PALETTE_COLORS, type Palette } from "./palette.js";
 
 export interface ProceduralMaterialOptions {
   createCanvas?: CanvasFactory;
@@ -16,10 +16,10 @@ export interface ProceduralMaterialOptions {
 
 /** Builds the 12 character material slots from a palette. */
 export function createProceduralMaterials(palette: Palette = {}, { createCanvas = defaultCanvasFactory }: ProceduralMaterialOptions = {}) {
-  const skinHex = palette.skin ?? "#c68b59";
-  const shirtHex = palette.shirt ?? "#2e5a88";
-  const shortsHex = palette.shorts ?? "#4a4e4d";
-  const hairHex = palette.hair ?? "#241c18";
+  const skinHex = palette.skin ?? DEFAULT_PALETTE_COLORS.skin;
+  const shirtHex = palette.shirt ?? DEFAULT_PALETTE_COLORS.shirt;
+  const shortsHex = palette.shorts ?? DEFAULT_PALETTE_COLORS.shorts;
+  const hairHex = palette.hair ?? DEFAULT_PALETTE_COLORS.hair;
   const textureSettings = resolveTextureSettings(palette.textures);
 
   const skinTex = makeSkinTextures(skinHex, textureSettings, createCanvas);
