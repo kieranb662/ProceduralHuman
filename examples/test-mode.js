@@ -1,8 +1,5 @@
 // Visual-test support shared by the example pages. `?test` freezes time and randomness (see each page),
-// renders at reduced quality and only draws a frame when something changed, because CI has no GPU and
-// software WebGL is slow.
-import * as THREE from "three";
-
+// and only draws a frame when something changed, because CI has no GPU and software WebGL is slow.
 export const testMode = new URLSearchParams(location.search).has("test");
 
 // Rendering waits for this much quiet time after the last change so bursts of edits draw one frame.
@@ -31,12 +28,4 @@ export function frameDue() {
   if (!dirty || performance.now() - lastChange < SETTLE_MS) return false;
   dirty = false;
   return true;
-}
-
-/** Cheaper rendering for CI screenshots: half resolution, hard shadows from a small shadow map. */
-export function applyTestQuality(renderer, lighting) {
-  if (!testMode) return;
-  renderer.setPixelRatio(0.5);
-  renderer.shadowMap.type = THREE.BasicShadowMap;
-  lighting.key.shadow.mapSize.set(512, 512);
 }

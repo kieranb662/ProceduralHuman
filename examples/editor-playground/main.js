@@ -4,14 +4,14 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createHuman, createParkMillerRng, createStudioLighting } from "@kieranb662/procedural-human";
 import { defaultAdultMale } from "@kieranb662/procedural-human/humans";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
-import { applyTestQuality, frameDue, invalidate, testMode } from "../test-mode.js";
+import { frameDue, invalidate, testMode } from "../test-mode.js";
 
 registerEditorElements();
 
 // ?test freezes time and randomness so visual tests are deterministic, and renders cheaply on demand.
 
 const container = document.getElementById("viewport");
-const renderer = new THREE.WebGLRenderer({ antialias: !testMode });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -30,7 +30,6 @@ controls.enableDamping = true;
 const lighting = createStudioLighting();
 scene.add(lighting.group);
 lighting.attachEnvironment(scene, renderer);
-applyTestQuality(renderer, lighting);
 
 const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 64), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.88 }));
 floor.rotation.x = -Math.PI / 2;

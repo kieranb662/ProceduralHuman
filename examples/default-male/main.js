@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createAdultMaleCharacter, createParkMillerRng, createStudioLighting, handLayout } from "@kieranb662/procedural-human";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
-import { applyTestQuality, frameDue, invalidate, testMode } from "../test-mode.js";
+import { frameDue, invalidate, testMode } from "../test-mode.js";
 
 registerEditorElements();
 
@@ -12,7 +12,7 @@ registerEditorElements();
 
 // --- Viewport --------------------------------------------------------------------------------
 const container = document.getElementById("viewport");
-const renderer = new THREE.WebGLRenderer({ antialias: !testMode, powerPreference: "high-performance" });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.shadowMap.enabled = true;
@@ -28,7 +28,6 @@ scene.fog = new THREE.FogExp2(0x0f172a, 0.06);
 const lighting = createStudioLighting();
 scene.add(lighting.group);
 lighting.attachEnvironment(scene, renderer);
-applyTestQuality(renderer, lighting);
 
 const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.05, 60);
 camera.position.set(0.35, 1.35, 3.05);
