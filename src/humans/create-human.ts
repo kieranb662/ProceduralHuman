@@ -25,6 +25,7 @@ export function applyHumanPose(character: ProceduralCharacter, pose: HumanPose):
 export function createHuman(design: HumanDesignInput, options: CreateHumanOptions = {}): ProceduralCharacter {
   const d = defineHuman(design);
   const character = createAdultMaleCharacter({
+    height: d.height,
     palette: d.palette,
     torsoDetails: d.torso,
     headDesign: d.head,

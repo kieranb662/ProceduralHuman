@@ -17,13 +17,16 @@ export function applySkinMapping(material: THREE.Material, textureSettings: Text
     shader.uniforms.skinThicknessScale = { value: textureSettings.skinThicknessScale };
     const varyings = `
 varying vec3 vSkinRestPosition;
+varying vec3 vSkinRegion;
 varying vec3 vSkinRestNormal;
 varying vec3 vFaceSurface;
 `;
-    shader.vertexShader = "attribute vec3 faceSurface;\n" + varyings + shader.vertexShader;
+    shader.vertexShader = "attribute vec3 faceSurface;\nattribute vec3 heightOffset;\n" + varyings + shader.vertexShader;
     // Capture before morphing/skinning so animation cannot move the texture through the skin.
     shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `
 vSkinRestPosition = position;
+// Anatomical masks stay on the default-height body (absent attribute reads as zero).
+vSkinRegion = position - heightOffset;
 vSkinRestNormal = normal;
 vFaceSurface = faceSurface;
 #include <begin_vertex>
@@ -127,13 +130,13 @@ ${(["spread", "base", "L"] as const).map((k) => `    float ${k === "L" ? "len" :
     shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", `
 ${THREE.ShaderChunk.map_fragment.replace(
   "texture2D( map, vMapUv )", "sampleSkinTexture( map, vSkinRestPosition )")}
-vec3 skinMasks = skinRegionMasks(vSkinRestPosition);
+vec3 skinMasks = skinRegionMasks(vSkinRegion);
 float skinMottle = skinNoise(vSkinRestPosition * 18.0 + vec3(7.1, 3.8, 1.4)) - 0.5;
 float skinFlush = skinNoise(vSkinRestPosition * 43.0 + vec3(1.7, 9.2, 5.3)) - 0.5;
 diffuseColor.rgb *= 1.0 + skinColorVariation * skinDetail
   * (skinMottle * 0.055 + skinFlush * vec3(0.035, -0.020, -0.025));
 diffuseColor.rgb *= mix(vec3(1.0), vec3(1.035, 0.955, 0.935), skinMasks.x * skinColorVariation);
-diffuseColor.rgb *= 1.0 - handCreases(vSkinRestPosition) * 0.13 * skinColorVariation;
+diffuseColor.rgb *= 1.0 - handCreases(vSkinRegion) * 0.13 * skinColorVariation;
 float nostrilV = vFaceSurface.y - 1.6205;
 // Teardrop openings: axes converge toward the tip and narrow at the front, as in nostrilField().
 vec2 nostrilCoord = vec2(
@@ -159,9 +162,9 @@ roughnessFactor = clamp(
       .replace("texture2D( bumpMap, vBumpMapUv + dSTdy )", "sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy )");
     // Retain surface derivative lengths so bumpScale represents height in scene units.
     bumpChunk = bumpChunk
-      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition ).x * skinPoreVisibility() - handCreases(vSkinRestPosition) * 0.18)")
-      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x * skinPoreVisibility() - handCreases(vSkinRestPosition + dSTdx) * 0.18)")
-      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x * skinPoreVisibility() - handCreases(vSkinRestPosition + dSTdy) * 0.18)")
+      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition ).x * skinPoreVisibility() - handCreases(vSkinRegion) * 0.18)")
+      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdx ).x * skinPoreVisibility() - handCreases(vSkinRegion + dSTdx) * 0.18)")
+      .replaceAll("sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x", "(sampleSkinTexture( bumpMap, vSkinRestPosition + dSTdy ).x * skinPoreVisibility() - handCreases(vSkinRegion + dSTdy) * 0.18)")
       .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
       .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
     shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
@@ -180,7 +183,7 @@ roughnessFactor = clamp(
       physicalChunk.replace(diffuseLine, `
 float skinDotNL = dot(geometryNormal, directLight.direction);
 float skinWrapped = max(skinDotNL + 0.3, 0.0) / (1.3 * 1.3);
-vec3 skinAttenuation = exp(-vec3(skinThicknessMm(vSkinRestPosition)) / vec3(3.5, 1.3, 0.65));
+vec3 skinAttenuation = exp(-vec3(skinThicknessMm(vSkinRegion)) / vec3(3.5, 1.3, 0.65));
 float skinBack = pow(max(-skinDotNL, 0.0), 2.0);
 vec3 skinScattered = directLight.color * (
   skinWrapped * vec3(0.95, 0.83, 0.75) + skinBack * skinAttenuation * 0.4

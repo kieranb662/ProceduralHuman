@@ -152,14 +152,33 @@ function inspectHand(side) {
   focusedHand = side;
 }
 cameraViews.addEventListener("change", () => {
-  if (cameraViews.value === "full") setCameraView([0.35, 1.35, 3.05], [0, 0.96, 0], "full");
-  else if (cameraViews.value === "face") setCameraView([0.08, 1.66, 0.58], [0, 1.64, 0.04], "face");
+  if (cameraViews.value === "full") showFullBody();
+  else if (cameraViews.value === "face") {
+    const offset = character.rig.worldRest.get("Head").y - 1.56;
+    setCameraView([0.08, 1.66 + offset, 0.58], [0, 1.64 + offset, 0.04], "face");
+  }
   else inspectHand("L");
+});
+function showFullBody() {
+  const height = character.height;
+  setCameraView([0.35 * height, 1.35 * height, 3.05 * height], [0, 0.96 * height, 0], "full");
+}
+let framedHeight = character.height;
+document.addEventListener("ph-change", () => {
+  if (character.height === framedHeight) return;
+  framedHeight = character.height;
+  showFullBody();
 });
 $("#viewLeftHand").addEventListener("click", () => inspectHand("L"));
 $("#viewRightHand").addEventListener("click", () => inspectHand("R"));
-$("#torsoFrontBtn").addEventListener("click", () => setCameraView([0.19, 1.33, 1.28], [0, 1.22, 0.03]));
-$("#torsoRearBtn").addEventListener("click", () => setCameraView([0.24, 1.18, -1.17], [0, 1.09, -0.04]));
+$("#torsoFrontBtn").addEventListener("click", () => {
+  const offset = character.rig.worldRest.get("Spine1").y - 1.24;
+  setCameraView([0.19, 1.33 + offset, 1.28], [0, 1.22 + offset, 0.03]);
+});
+$("#torsoRearBtn").addEventListener("click", () => {
+  const offset = character.rig.worldRest.get("Spine").y - 1.08;
+  setCameraView([0.24, 1.18 + offset, -1.17], [0, 1.09 + offset, -0.04]);
+});
 
 // --- Layout ----------------------------------------------------------------------------------
 const controlPanel = $("#controlPanel");

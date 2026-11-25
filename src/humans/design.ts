@@ -10,6 +10,7 @@ import { CLOTHING_ITEMS, type ClothingSlot, type Outfit } from "../mesh/api/clot
 import { validateHeadDesign } from "../mesh/api/head/design.js";
 import type { HeadDesign } from "../mesh/api/head/types.js";
 import { resolveTextureSettings } from "../textures/api/settings.js";
+import { validateHeight } from "../mesh/api/body/height.js";
 
 export const HUMAN_DESIGN_FORMAT = "procedural-human";
 export const HUMAN_DESIGN_VERSION = 1;
@@ -31,6 +32,7 @@ export interface HumanDesign {
   format: typeof HUMAN_DESIGN_FORMAT;
   version: typeof HUMAN_DESIGN_VERSION;
   name: string;
+  height: number;
   head: HeadDesign;
   palette: Required<Palette>;
   torso: TorsoDetails;
@@ -43,6 +45,7 @@ export interface HumanDesignInput {
   format?: typeof HUMAN_DESIGN_FORMAT;
   version?: number;
   name?: string;
+  height?: number;
   head?: Partial<HeadDesign>;
   palette?: Palette;
   torso?: TorsoDetailChanges;
@@ -123,6 +126,7 @@ export function defineHuman(input: HumanDesignInput = {}): HumanDesign {
     format: HUMAN_DESIGN_FORMAT,
     version: HUMAN_DESIGN_VERSION,
     name: input.name ?? "Untitled Human",
+    height: validateHeight(input.height ?? 1),
     head, palette, torso, outfit, pose,
   };
 }

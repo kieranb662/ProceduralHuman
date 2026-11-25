@@ -190,8 +190,9 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     const view = this.view;
     if (!view) return;
     const [x, y, z] = HEAD_VIEWS[name];
-    view.camera.position.set(x, y, z);
-    view.controls?.target.set(...HEAD_VIEW_TARGET);
+    const heightOffset = this.target.rig.worldRest.get("Head").y - 1.56;
+    view.camera.position.set(x, y + heightOffset, z);
+    view.controls?.target.set(HEAD_VIEW_TARGET[0], HEAD_VIEW_TARGET[1] + heightOffset, HEAD_VIEW_TARGET[2]);
     view.controls?.update();
     view.camera.updateMatrixWorld();
   }

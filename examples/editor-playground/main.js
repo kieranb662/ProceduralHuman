@@ -49,6 +49,14 @@ for (const el of document.querySelectorAll("ph-rig-debug, ph-physics-debug")) {
 document.querySelector("ph-lighting-editor").lighting = lighting;
 const animationEditor = document.querySelector("ph-animation-editor");
 const reachTarget = new THREE.Vector3(-0.24, 1.34, 0.48);
+let framedHeight = character.height;
+document.addEventListener("ph-change", () => {
+  if (character.height === framedHeight) return;
+  framedHeight = character.height;
+  camera.position.set(0.35 * framedHeight, 1.35 * framedHeight, 3.05 * framedHeight);
+  controls.target.set(0, 0.96 * framedHeight, 0);
+  invalidate();
+});
 
 function resize() {
   const { clientWidth: w, clientHeight: h } = container;

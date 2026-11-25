@@ -15,6 +15,8 @@ import type { CanvasFactory } from "../textures/api/canvas.js";
 
 /** Everything needed to generate a character. All fields are optional; omitted fields use the defaults. */
 export interface CharacterOptions {
+  /** Full neutral height multiplier, 0.5..2. Cross-sections and head size are unchanged. */
+  height?: number;
   palette?: Palette;
   torsoDetails?: TorsoDetailChanges;
   headDesign?: HeadDesign | null;
@@ -37,6 +39,8 @@ export interface CharacterUpdateOptions {
 
 /** The object returned by createAdultMaleCharacter(). */
 export interface ProceduralCharacter {
+  readonly height: number;
+  setHeight(height: number): void;
   /** Add this to your scene. */
   root: THREE.Group;
   skinnedMesh: THREE.SkinnedMesh;

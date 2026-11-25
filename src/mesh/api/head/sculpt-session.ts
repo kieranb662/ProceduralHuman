@@ -69,6 +69,7 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
     } else {
       previewMesh.geometry = next.geometry;
     }
+    previewMesh.position.y = next.geometry.userData.heightOffsetY ?? 0;
     disposePreview(previous);
     previewMesh.updateMatrixWorld(true);
   }

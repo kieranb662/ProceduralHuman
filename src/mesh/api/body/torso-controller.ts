@@ -17,10 +17,10 @@ export function createTorsoController(
   let torsoDetails = configureTorsoDetails(null, initial);
   sculptTorso(bodyGeo, neutralBody, torsoDetails);
 
-  /** Copies the sculpted body surface (positions + normals) into a merged character geometry. */
+  /** Copies the canonical body surface and weights into a merged character geometry. */
   function copyBodySurface(geometry: THREE.BufferGeometry) {
-    for (const name of ["position", "normal"]) {
-      (geometry.attributes[name].array as any).set(bodyGeo.attributes[name].array);
+    for (const name of ["position", "normal", "skinIndex", "skinWeight"]) {
+      geometry.attributes[name].array.set(bodyGeo.attributes[name].array);
       geometry.attributes[name].needsUpdate = true;
     }
     restoreNeckJoinNormals(geometry);

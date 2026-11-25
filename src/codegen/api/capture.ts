@@ -18,6 +18,7 @@ export function captureHumanDesign(character: ProceduralCharacter, options: Capt
   const { base, upper, face } = character.animationState;
   return defineHuman({
     name: options.name,
+    height: character.height,
     head: options.head ?? character.headDesign,
     palette: character.palette,
     torso: character.torsoDetails,

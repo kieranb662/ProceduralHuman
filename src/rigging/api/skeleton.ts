@@ -87,6 +87,8 @@ export function createHumanoidSkeleton(): HumanoidRig {
     addBone(`Deltoid_${side}`, `Clavicle_${side}`, s * 0.195, 1.405, -0.006);
     // Mid-forearm helper driven to half of Hand's twist (pronation) in update().
     addBone(`ForearmTwist_${side}`, `Forearm_${side}`, s * 0.4925, 1.125, -0.003);
+    // Elbow helper at the joint, driven to half of Forearm's rotation in update().
+    addBone(`Elbow_${side}`, `UpperArm_${side}`, s * 0.425, 1.225, -0.014);
   }
 
   for (const [side, s] of SIDES) {

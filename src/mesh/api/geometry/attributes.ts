@@ -16,6 +16,9 @@ export function ensureUniformAttributes(rawGeo: THREE.BufferGeometry): THREE.Buf
   if (!geo.attributes.faceSurface) {
     geo.setAttribute("faceSurface", new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
   }
+  if (!geo.attributes.heightOffset) {
+    geo.setAttribute("heightOffset", new THREE.Float32BufferAttribute(new Float32Array(count * 3), 3));
+  }
   return geo;
 }
 

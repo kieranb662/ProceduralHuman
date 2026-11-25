@@ -13,6 +13,7 @@ export const defaultAdultMale = defineHuman({
   "format": "procedural-human",
   "version": 1,
   "name": "Default Adult Male",
+  "height": 1,
   "head": {
     "transforms": {},
     "features": {},

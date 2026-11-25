@@ -45,11 +45,23 @@ export function createAnimationLayers(
   baseActions.idle.play();
 
   let upperBlend = 0;
+  let reboundFades: { mixer: THREE.AnimationMixer; action: THREE.AnimationAction; from: number; to: number; elapsed: number; duration: number }[] = [];
+  function updateReboundFades(mixer: THREE.AnimationMixer, dt: number) {
+    reboundFades = reboundFades.filter((fade) => {
+      if (fade.mixer !== mixer) return true;
+      fade.elapsed += dt;
+      const t = Math.min(1, fade.elapsed / fade.duration);
+      fade.action.setEffectiveWeight(THREE.MathUtils.lerp(fade.from, fade.to, t));
+      if (t === 1 && fade.to === 0) fade.action.stop();
+      return t < 1;
+    });
+  }
   const baseArmQuats = new Map<string, THREE.Quaternion>() as KeyedMap<THREE.Quaternion>;
   for (const name of RIGHT_ARM_BONES) baseArmQuats.set(name, new THREE.Quaternion());
 
   function setBaseAnimation(name: BaseAnimation) {
     if (!baseActions[name] || name === activeBase) return;
+    reboundFades = reboundFades.filter((fade) => fade.mixer !== baseMixer);
     const prev = baseActions[activeBase];
     const next = baseActions[name];
     next.reset().setEffectiveWeight(1).play();
@@ -62,6 +74,7 @@ export function createAnimationLayers(
 
   function setUpperAnimation(name: UpperAnimation) {
     if (name === activeUpper) return;
+    reboundFades = reboundFades.filter((fade) => fade.mixer !== upperMixer);
     if (upperLookup[name]) {
       if (activeUpperClip && activeUpperClip !== name && upperActions[activeUpperClip]) {
         const prev = upperActions[activeUpperClip];
@@ -78,6 +91,7 @@ export function createAnimationLayers(
 
   function setFaceExpression(name: FaceExpression) {
     if (name === activeFace) return;
+    reboundFades = reboundFades.filter((fade) => fade.mixer !== faceMixer);
     if (activeFace !== "neutral" && faceActions[activeFace]) {
       faceActions[activeFace].fadeOut(0.2);
     }
@@ -92,11 +106,13 @@ export function createAnimationLayers(
   }
 
   function updateBase(dt: number) {
+    updateReboundFades(baseMixer, dt);
     baseMixer.update(dt);
   }
 
   /** Layered upper-body clip pass over the right arm. Returns the current overlay blend (0..1). */
   function updateUpper(dt: number): number {
+    updateReboundFades(upperMixer, dt);
     const targetUpper = (activeUpper === "waving" || activeUpper === "holding") ? 1 : 0;
     upperBlend = THREE.MathUtils.damp(upperBlend, targetUpper, 10, dt);
 
@@ -136,6 +152,7 @@ export function createAnimationLayers(
   }
 
   function updateFace(dt: number) {
+    updateReboundFades(faceMixer, dt);
     faceMixer.update(dt);
   }
 
@@ -161,6 +178,47 @@ export function createAnimationLayers(
     };
   }
 
+  /** Refreshes all saved mixer rest values when body lengths change. */
+  function suspendBody(): () => void {
+    const groups: { mixer: THREE.AnimationMixer; actions: Partial<Record<ClipName, THREE.AnimationAction>>; names: readonly ClipName[] }[] = [
+      { mixer: baseMixer, actions: baseActions, names: BASE_ANIMATIONS },
+      { mixer: upperMixer, actions: upperActions, names: UPPER_ANIMATIONS },
+      { mixer: faceMixer, actions: faceActions, names: FACE_EXPRESSIONS },
+    ];
+    const saved = groups.map(({ actions, names }) => names.map((name) => {
+      const action = actions[name]!;
+      return { name, scheduled: action.isScheduled(), time: action.time,
+        weight: action.getEffectiveWeight(), timeScale: action.getEffectiveTimeScale(), paused: action.paused };
+    }));
+    reboundFades = [];
+    for (const { mixer } of groups) {
+      mixer.stopAllAction();
+      mixer.uncacheRoot(skinnedMesh);
+    }
+    return () => {
+      groups.forEach(({ mixer, actions }, i) => {
+        for (const state of saved[i]) {
+          const action = mixer.clipAction(clips[state.name]);
+          actions[state.name] = action;
+          if (state.name === "blinking") action.setLoop(THREE.LoopOnce, 1);
+          if (state.scheduled) {
+            action.setEffectiveWeight(state.weight).setEffectiveTimeScale(state.timeScale).play();
+            action.time = state.time;
+            action.paused = state.paused;
+            const target = state.name === activeBase || state.name === activeUpperClip
+              || state.name === activeFace || state.name === "blinking" ? 1 : 0;
+            if (state.weight !== target) {
+              reboundFades.push({
+                mixer, action, from: state.weight, to: target, elapsed: 0,
+                duration: Math.abs(target - state.weight) * (mixer === baseMixer ? 0.25 : 0.2),
+              });
+            }
+          }
+        }
+      });
+    };
+  }
+
   /** Stops every action and releases the cached mixer bindings. */
   function dispose() {
     for (const mixer of [baseMixer, upperMixer, faceMixer]) {
@@ -173,7 +231,7 @@ export function createAnimationLayers(
     dispose,
     mixers: { base: baseMixer, upper: upperMixer, face: faceMixer },
     setBaseAnimation, setUpperAnimation, setFaceExpression, triggerBlink,
-    updateBase, updateUpper, updateFace, suspendFace,
+    updateBase, updateUpper, updateFace, suspendFace, suspendBody,
     get state() { return { base: activeBase, upper: activeUpper, face: activeFace }; },
   };
 }

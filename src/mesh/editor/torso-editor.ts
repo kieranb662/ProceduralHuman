@@ -1,6 +1,7 @@
 import { defineElement, h, onDetail } from "../../ui/api/element.js";
 import type { PhPanel } from "../../ui/api/panel.js";
 import type { PhToggle } from "../../ui/api/toggle.js";
+import type { PhSlider } from "../../ui/api/slider.js";
 import { PhEditorElement } from "../../ui/editor/editor-element.js";
 import type { ParameterDef, ParameterEventDetail, PhParameterGroup } from "../../ui/editor/parameter-group.js";
 import type { ProceduralCharacter } from "../../humans/types.js";
@@ -19,6 +20,20 @@ export class PhTorsoEditor extends PhEditorElement<ProceduralCharacter> {
 
   render() {
     const settings = this.target.torsoDetails;
+    const height = h("ph-slider", {
+      label: "Height", min: 0.5, max: 2, step: "any", decimals: 2, unit: "x",
+      value: this.target.height,
+    }) as PhSlider;
+    height.addEventListener("input", () => {
+      this.target.setHeight(Math.max(0.5, Math.min(2, height.value)));
+      this.changed("torso");
+    });
+    const resetHeight = h("ph-button", { block: true }, "Reset Height");
+    resetHeight.addEventListener("click", () => {
+      this.target.setHeight(1);
+      height.value = 1;
+      this.changed("torso");
+    });
     const panels = (Object.entries(TORSO_DETAILS) as [keyof TorsoDetails, (typeof TORSO_DETAILS)[keyof TorsoDetails]][]).map(([group, { label, sliders }]) => {
       const toggle = h("ph-toggle", { label, strong: true, checked: settings[group].enabled, slot: "title" }) as PhToggle;
       const params = h("ph-parameter-group") as PhParameterGroup;
@@ -42,7 +57,7 @@ export class PhTorsoEditor extends PhEditorElement<ProceduralCharacter> {
       this.changed("torso");
     });
     this.clear();
-    this.root.append(...panels, reset);
+    this.root.append(h("ph-panel", { framed: true, title: "Body Height" }, height, resetHeight), ...panels, reset);
   }
 
   private schedule(group: keyof TorsoDetails, key: string, value: number | boolean) {

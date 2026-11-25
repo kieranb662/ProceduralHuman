@@ -43,6 +43,47 @@ human.dispose(); // frees geometry, materials, textures, skeletons and mixers, a
 Pass `{ createCanvas }` to build characters outside a browser page (Workers, SSR, tests) and `{ rng }`
 (e.g. `createParkMillerRng(seed)`) for deterministic blink and gaze timing.
 
+### Height
+
+Set `height` in a human design (or in `createAdultMaleCharacter` options), or call
+`human.setHeight(multiplier)` on a live character. The supported range is `0.5` to `2`,
+relative to the default neutral mesh height. `1` restores the default.
+The torso editor includes a Height slider and a separate Reset Height button.
+
+Height changes lengthen the torso and limb centerlines without scaling their width or thickness.
+The entire head, including facial features and hair, retains its size and shape; hands and feet
+also keep their size. Bone rest positions, bind matrices, animation position tracks, clothing
+and physics descriptors update automatically. The body surface and its skin weights are
+regenerated at the new proportions on the same topology (sculpted torso details are carried
+over): limb shafts absorb most of the change while the shoulder girdle and pelvis keep their
+joint shape, and joint weight blends keep a minimum physical width so short bodies bend without
+creasing. Height is included in captured/exported designs.
+
+### Shoulder deformation
+
+Raising an arm past the rest A-pose drives the clavicle automatically (scapulohumeral rhythm, about
+1° of girdle rotation for every 4° of arm elevation). This lifts the acromion and trapezius out of the
+way, as a real shoulder girdle does. Elevation already authored on the clavicle counts toward it, and the
+arm is re-aimed at the posed hand without changing its elbow angle. Shoulder skin weights are laid out
+on the seated torso surface in physical distances. The trapezius rides the clavicle, and the deltoid
+helper ramps from the socket rim into the arm, so waving and overhead poses round smoothly instead of
+folding the top of the shoulder. Shorter characters have upper arms that are short but just as thick.
+For them, the arm root rings are spaced evenly further down the humerus, the deltoid-to-arm ramp runs
+along more of the shaft, and the socket rim takes a larger deltoid share with a wider fade. This spreads
+the bend over a long enough stretch of skin that the arm root doesn't fold when the arm points straight
+up or forward.
+
+The deltoid helper turns half as far as the humerus, so any upper-arm ring that follows it lags
+behind and shifts sideways. If its share ends abruptly mid-shaft, a raised arm kinks into a Z. The
+share therefore falls steeply near the socket and tapers slowly toward the elbow. The best taper
+depends on where the root rings sit along the humerus, which changes with arm length. Each height
+range (`[0.5, 0.8)`, `[0.8, 1.4]`, `(1.4, 1.7]`, `(1.7, 2]`) has its own tuned upper-arm layout,
+interpolated between knots inside the range.
+
+A half-angle `Elbow_L`/`Elbow_R` helper bone carries the elbow joint ring. This stops the inner
+elbow from collapsing and thinning as the forearm bends toward 90° and beyond
+(`src/rigging/api/twist-helpers.ts`, `src/mesh/api/body/body-parts.ts`).
+
 ## Editors
 
 Every section ships a themeable web component built from the shared `ph-*` UI components:
@@ -95,6 +136,10 @@ Visual baselines are stored per platform in `test/visual/__screenshots__/` (`*-w
 CI writes missing Linux baselines on its first run and uploads them as the `visual-three-*` artifacts:
 download them, check them, and commit them so later runs compare against them. After an intentional visual
 change, run `npm run test:visual:update` and commit the new images.
+
+The height regression test uses **half-height and double-height** characters in neutral,
+deep-squat/raised-arm and twisted-lunge poses. Each sheet shows front, side, back and oblique
+views (short above tall). Run it with `npm run test:visual -- --grep "height extremes"`.
 
 ## Releasing
 

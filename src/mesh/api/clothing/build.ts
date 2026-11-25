@@ -69,7 +69,12 @@ export function fitClothingToBody(geo: THREE.BufferGeometry, body: THREE.BufferG
     const x = n.getX(j), y = n.getY(j), z = n.getZ(j);
     position.setXYZ(i, p.getX(j) + x * surfaceOffset, p.getY(j) + y * surfaceOffset, p.getZ(j) + z * surfaceOffset);
     normal.setXYZ(i, x, y, z);
+    for (let k = 0; k < 4; k++) {
+      geo.attributes.skinIndex.setComponent(i, k, body.attributes.skinIndex.getComponent(j, k));
+      geo.attributes.skinWeight.setComponent(i, k, body.attributes.skinWeight.getComponent(j, k));
+    }
   });
   position.needsUpdate = normal.needsUpdate = true;
+  geo.attributes.skinIndex.needsUpdate = geo.attributes.skinWeight.needsUpdate = true;
   geo.boundingBox = geo.boundingSphere = null;
 }

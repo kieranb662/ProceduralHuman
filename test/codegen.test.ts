@@ -31,6 +31,7 @@ describe("round trip", () => {
   it("preserves every attribute of a customized human", () => {
     const custom = defineHuman({
       name: "Custom Test Human",
+      height: 1 / 2,
       head: { transforms: { ears: { sx: 1.2 } }, features: { chin: 0.4 }, strokes: [
         { target: "skin", mode: "raise", center: [0.02, 1.64, 0.1], delta: [0, 0, 0.002], radius: 0.015, strength: 0.4, mirror: true },
       ] },
