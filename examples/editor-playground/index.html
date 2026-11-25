@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor Playground</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+    body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+    #viewport { position: relative; min-width: 0; }
+    #viewport canvas { display: block; width: 100%; height: 100%; }
+    aside { overflow: hidden; display: flex; flex-direction: column; padding: 12px; border-left: 1px solid #334155; background: rgba(15, 23, 42, 0.95); }
+    ph-tabs { flex: 1 1 auto; min-height: 0; }
+    @media (max-width: 760px) { body { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } aside { border-left: 0; border-top: 1px solid #334155; } }
+  </style>
+</head>
+<body>
+  <div id="viewport"></div>
+  <aside>
+    <ph-tabs>
+      <ph-tab-panel label="Animate">
+        <ph-animation-editor></ph-animation-editor>
+        <ph-face-editor></ph-face-editor>
+      </ph-tab-panel>
+      <ph-tab-panel label="Body">
+        <ph-panel heading="Clothing"><ph-clothing-editor></ph-clothing-editor></ph-panel>
+        <ph-panel heading="Torso anatomy"><ph-torso-editor></ph-torso-editor></ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Materials">
+        <ph-materials-editor></ph-materials-editor>
+      </ph-tab-panel>
+      <ph-tab-panel label="Lighting">
+        <ph-lighting-editor></ph-lighting-editor>
+        <ph-panel heading="Debug">
+          <ph-rig-debug></ph-rig-debug>
+          <ph-physics-debug></ph-physics-debug>
+        </ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Export">
+        <ph-panel heading="Export human">
+          <p slot="hint">A standalone ES module with every attribute of this human. Works in any project with the package and three installed.</p>
+          <ph-human-export name="Playground Human"></ph-human-export>
+        </ph-panel>
+      </ph-tab-panel>
+    </ph-tabs>
+  </aside>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

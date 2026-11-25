@@ -1,0 +1,90 @@
+{
+  "name": "@kieranb662/procedural-human",
+  "version": "0.1.0",
+  "description": "Procedurally generated, fully rigged three.js humans with a shareable web-component editor.",
+  "keywords": [
+    "three",
+    "threejs",
+    "procedural",
+    "character",
+    "humanoid",
+    "skinned-mesh",
+    "web-components"
+  ],
+  "homepage": "https://github.com/kieranb662/ProceduralHuman#readme",
+  "bugs": {
+    "url": "https://github.com/kieranb662/ProceduralHuman/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kieranb662/ProceduralHuman.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./humans": {
+      "types": "./dist/humans/index.d.ts",
+      "import": "./dist/humans/index.js"
+    },
+    "./editor": {
+      "types": "./dist/editor.d.ts",
+      "import": "./dist/editor.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "vite",
+    "demo:build": "vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "test": "vitest run",
+    "humans:update": "vitest run test/codegen.test.ts -u",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "npm run build && changeset publish",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "peerDependencies": {
+    "@types/three": ">=0.186.0",
+    "three": ">=0.186.0 <0.190.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/three": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.3",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.19.2",
+    "@types/three": "^0.186.0",
+    "three": "^0.186.0",
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}

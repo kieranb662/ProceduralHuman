@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Default Adult Male</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      margin: 0;
+      overflow: hidden;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden select-none">
+  <div id="viewport" class="relative w-full h-full"></div>
+
+  <div class="fixed left-3 right-3 md:right-[340px] pointer-events-none flex flex-wrap items-center justify-between gap-2 z-20" style="top:calc(0.75rem + env(safe-area-inset-top, 0px))">
+    <div class="pointer-events-auto bg-slate-900/80 backdrop-blur-md border border-slate-700/70 rounded-2xl px-4 py-2.5 shadow-xl">
+      <div class="flex items-center gap-2.5">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+        <h1 class="text-sm sm:text-base font-semibold tracking-tight text-white">Adult Male SkinnedMesh Prototype</h1>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-0.5" id="statsLine">Initializing rig &amp; procedural geometry...</p>
+    </div>
+
+    <ph-segmented id="cameraViews" columns="3" label="Camera view" class="pointer-events-auto bg-slate-900/80 backdrop-blur-md border border-slate-700/70 rounded-2xl p-1.5 shadow-xl w-[320px]"></ph-segmented>
+    <ph-button id="togglePanelBtn" class="md:hidden pointer-events-auto">Controls</ph-button>
+  </div>
+
+  <aside id="controlPanel" class="fixed right-3 w-[316px] max-w-[calc(100vw-24px)] bg-slate-900/85 backdrop-blur-lg border border-slate-700/70 rounded-2xl shadow-2xl z-30 flex flex-col overflow-hidden transition-transform duration-200 translate-x-[120%] md:translate-x-0 p-3" style="top:calc(0.75rem + env(safe-area-inset-top, 0px));bottom:calc(0.75rem + env(safe-area-inset-bottom, 0px))">
+    <div class="pb-3 flex items-center justify-between">
+      <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Character Tools</span>
+      <ph-button id="closePanelBtn" class="md:hidden">Close</ph-button>
+    </div>
+    <ph-tabs id="toolTabs" class="flex-1 min-h-0">
+      <ph-tab-panel label="Animate">
+        <ph-panel heading="Dress Up / Clothing Slots">
+          <p slot="hint">Removable clothing follows the body rig; it never replaces body geometry.</p>
+          <ph-clothing-editor></ph-clothing-editor>
+        </ph-panel>
+        <ph-animation-editor></ph-animation-editor>
+        <ph-panel heading="Inspect hands">
+          <div class="grid grid-cols-2 gap-1.5">
+            <ph-button id="viewLeftHand" block>Left hand</ph-button>
+            <ph-button id="viewRightHand" block>Right hand</ph-button>
+          </div>
+        </ph-panel>
+        <ph-face-editor></ph-face-editor>
+        <ph-panel heading="Debug &amp; Rapier Readiness">
+          <ph-rig-debug></ph-rig-debug>
+          <ph-physics-debug></ph-physics-debug>
+        </ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Materials">
+        <ph-materials-editor></ph-materials-editor>
+        <ph-panel heading="Export human">
+          <p slot="hint">A standalone ES module with every attribute (head, materials, torso, outfit, pose) as data plus a create function. Works in any project with @kieranb662/procedural-human and three installed.</p>
+          <ph-human-export></ph-human-export>
+        </ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Head">
+        <ph-head-editor storage-key="procedural-human-head-design-v1"></ph-head-editor>
+        <ph-panel heading="Export human">
+          <ph-human-export></ph-human-export>
+        </ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Torso">
+        <ph-panel heading="Torso Anatomy">
+          <p slot="hint">Enable each detail independently and adjust its shape live. Use Base body on the Animate tab to see details without clothing.</p>
+          <div class="grid grid-cols-2 gap-1.5">
+            <ph-button id="torsoFrontBtn" block>Front view</ph-button>
+            <ph-button id="torsoRearBtn" block>Rear view</ph-button>
+          </div>
+          <ph-torso-editor></ph-torso-editor>
+        </ph-panel>
+      </ph-tab-panel>
+      <ph-tab-panel label="Lighting">
+        <ph-lighting-editor></ph-lighting-editor>
+      </ph-tab-panel>
+    </ph-tabs>
+  </aside>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
