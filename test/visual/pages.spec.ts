@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
+/** Waits until the page has drawn every pending change (pages render on demand in ?test mode). */
+async function settled(page: Page) {
+  await page.waitForFunction(() => (window as unknown as { __phSettled?: () => boolean }).__phSettled?.() === true, null, { timeout: 120_000 });
+}
+
 /** Opens an example page in deterministic test mode and waits for the first rendered frame. */
 async function open(page: Page, path: string) {
   const errors: string[] = [];
@@ -7,7 +12,7 @@ async function open(page: Page, path: string) {
   await page.goto(`${path}?test`);
   await page.waitForFunction(() => (window as unknown as { __phReady?: boolean }).__phReady === true, null, { timeout: 120_000 });
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(500);
+  await settled(page);
   return errors;
 }
 
@@ -23,7 +28,7 @@ test.describe("default-male demo", () => {
   test("head sculpt mode frames the face and records brush strokes", async ({ page }) => {
     const errors = await open(page, "/default-male/");
     await page.getByRole("tab", { name: "Head" }).click();
-    await page.waitForTimeout(500);
+    await settled(page);
     await expect(page).toHaveScreenshot("head-sculpt.png");
 
     const canvas = page.locator("#viewport canvas");
@@ -42,8 +47,10 @@ test.describe("editor playground", () => {
   test("lighting and materials editors render", async ({ page }) => {
     const errors = await open(page, "/editor-playground/");
     await page.getByRole("tab", { name: "Lighting" }).click();
+    await settled(page);
     await expect(page).toHaveScreenshot("playground-lighting.png");
     await page.getByRole("tab", { name: "Materials" }).click();
+    await settled(page);
     await expect(page).toHaveScreenshot("playground-materials.png");
     expect(errors).toEqual([]);
   });

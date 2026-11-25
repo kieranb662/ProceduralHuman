@@ -88,6 +88,10 @@ npm test              # unit tests (Node, headless character generation, animati
 npm run test:visual   # Playwright screenshots of the example pages in ?test mode
 ```
 
+In `?test` mode the example pages render at half resolution without antialiasing and with hard 512px shadows,
+and only draw a frame after something changes (see `examples/test-mode.js`), so CI's software WebGL stays fast.
+Baselines therefore look softer than the live demo; existing baselines must be regenerated once after this change.
+
 Visual baselines are stored per platform in `test/visual/__screenshots__/` (`*-win32.png`, `*-linux.png`, ...).
 CI writes missing Linux baselines on its first run and uploads them as the `visual-three-*` artifacts:
 download them, check them, and commit them so later runs compare against them. After an intentional visual

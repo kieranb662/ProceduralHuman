@@ -4,14 +4,14 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createHuman, createParkMillerRng, createStudioLighting } from "@kieranb662/procedural-human";
 import { defaultAdultMale } from "@kieranb662/procedural-human/humans";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
+import { applyTestQuality, frameDue, invalidate, testMode } from "../test-mode.js";
 
 registerEditorElements();
 
-// ?test freezes time and randomness so visual tests are deterministic.
-const testMode = new URLSearchParams(location.search).has("test");
+// ?test freezes time and randomness so visual tests are deterministic, and renders cheaply on demand.
 
 const container = document.getElementById("viewport");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: !testMode });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -30,6 +30,7 @@ controls.enableDamping = true;
 const lighting = createStudioLighting();
 scene.add(lighting.group);
 lighting.attachEnvironment(scene, renderer);
+applyTestQuality(renderer, lighting);
 
 const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 64), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.88 }));
 floor.rotation.x = -Math.PI / 2;
@@ -55,11 +56,13 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  invalidate();
 }
 new ResizeObserver(resize).observe(container);
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
+  if (!frameDue()) return;
   const dt = testMode ? 0 : Math.min(clock.getDelta(), 0.05);
   character.update(dt, { autoBlink: !testMode && animationEditor.autoBlink, autoGaze: !testMode && animationEditor.autoGaze, reachTarget });
   controls.update();
