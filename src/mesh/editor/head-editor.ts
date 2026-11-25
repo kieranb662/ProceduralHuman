@@ -10,10 +10,10 @@ import type { PhToggle } from "../../ui/api/toggle.js";
 import { PhEditorElement } from "../../ui/editor/editor-element.js";
 import type { ParameterEventDetail, PhParameterGroup } from "../../ui/editor/parameter-group.js";
 import {
-  HEAD_BRUSH_LABELS, HEAD_FEATURE_PARAMETERS, HEAD_TARGET_LABELS, HEAD_TRANSFORM_PARAMETERS,
+  HEAD_BRUSH_LABELS, HEAD_EAR_PARAMETERS, HEAD_FEATURE_PARAMETERS, HEAD_TARGET_LABELS, HEAD_TRANSFORM_PARAMETERS,
 } from "../api/head/parameters.js";
 import { createHeadSculptSession, type HeadHit, type HeadSculptSession } from "../api/head/sculpt-session.js";
-import type { HeadBrushMode, HeadDesign, HeadFeature, HeadTarget, HeadTransform } from "../api/head/types.js";
+import type { EarAdjustments, HeadBrushMode, HeadDesign, HeadFeature, HeadTarget, HeadTransform } from "../api/head/types.js";
 
 const HEAD_VIEWS = {
   front: [0, 1.662, 0.56], left: [0.46, 1.662, 0.22], right: [-0.46, 1.662, 0.22],
@@ -64,6 +64,8 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private readonly mirror = h("ph-toggle", { label: "Mirror across the face center", checked: true }) as PhToggle;
   private readonly transforms = h("ph-parameter-group") as PhParameterGroup;
   private readonly features = h("ph-parameter-group") as PhParameterGroup;
+  private readonly ears = h("ph-parameter-group") as PhParameterGroup;
+  private readonly attachedEarlobes = h("ph-toggle", { label: "Attached earlobes" }) as PhToggle;
   private readonly undoButton = h("ph-button", { disabled: true }, "Undo") as PhButton;
   private readonly redoButton = h("ph-button", { disabled: true }, "Redo") as PhButton;
   private readonly status = h("ph-status", { tone: "muted" }) as PhStatus;
@@ -74,6 +76,7 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
     this.brush.options = [...Object.entries(HEAD_BRUSH_LABELS), ["orbit", "Navigate only"]].map(([value, label]) => ({ value, label }));
     this.transforms.parameters = HEAD_TRANSFORM_PARAMETERS;
     this.features.parameters = HEAD_FEATURE_PARAMETERS;
+    this.ears.parameters = HEAD_EAR_PARAMETERS;
     this.wireControls();
   }
 
@@ -134,6 +137,9 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
         this.toggle, views, this.partSelect),
       h("ph-panel", { heading: "Canvas brush", framed: true }, this.brush, this.radius, this.strength, this.mirror),
       h("ph-panel", { heading: "Part size & placement" }, this.transforms),
+      h("ph-panel", { heading: "Ear anatomy" },
+        h("p", { slot: "hint" }, "Positive depth moves ears toward the face. Facing 0 degrees is sideways; 90 degrees is forward."),
+        this.ears, this.attachedEarlobes),
       h("ph-panel", { heading: "Facial contour adjustments" },
         h("p", { slot: "hint" }, "Signed millimeter offsets sculpt the neutral face, not an expression."),
         this.features),
@@ -204,6 +210,14 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
 
   private wireControls() {
     this.toggle.addEventListener("change", () => this.guard(() => this.setEditing(this.toggle.checked)));
+    this.attachedEarlobes.addEventListener("change", () => this.guard(() => {
+      this.setEditing(true);
+      this.finishStroke();
+      this.sess.remember();
+      this.sess.setAttachedEarlobes(this.attachedEarlobes.checked);
+      this.sess.rebuildPreview();
+      this.afterDesignChange();
+    }));
     this.partSelect.addEventListener("change", () => { this.finishStroke(); this.showDesignControls(); this.cursor.visible = false; });
     this.brush.addEventListener("change", () => {
       this.finishStroke();
@@ -222,7 +236,12 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
       this.sess.setFeature(e.detail.key as HeadFeature, e.detail.value);
       this.scheduleRebuild();
     }));
-    for (const group of [this.transforms, this.features]) {
+    onDetail<ParameterEventDetail>(this.ears, "input", (_detail, e) => this.guard(() => {
+      this.beginSlider();
+      this.sess.setEarAdjustment(e.detail.key as keyof EarAdjustments, e.detail.value);
+      this.scheduleRebuild();
+    }));
+    for (const group of [this.transforms, this.features, this.ears]) {
       group.addEventListener("change", () => { this.sliderGesture = false; this.afterDesignChange(false); });
     }
     this.undoButton.addEventListener("click", () => this.guard(() => this.history("undo")));
@@ -248,6 +267,8 @@ export class PhHeadEditor extends PhEditorElement<ProceduralCharacter> {
   private showDesignControls() {
     const design = this.session?.design;
     if (!design) return;
+    this.attachedEarlobes.checked = design.attachedEarlobes ?? false;
+    this.ears.values = Object.fromEntries(HEAD_EAR_PARAMETERS.map((p) => [p.key, design.ears?.[p.key] ?? p.default]));
     const transform = design.transforms[this.headPart] ?? {};
     this.transforms.values = Object.fromEntries(HEAD_TRANSFORM_PARAMETERS.map((p) => [p.key, transform[p.key] ?? p.default]));
     this.features.values = Object.fromEntries(HEAD_FEATURE_PARAMETERS.map((p) => [p.key, design.features[p.key] ?? 0]));

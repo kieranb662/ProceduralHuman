@@ -4,6 +4,81 @@ import { createAdultMaleCharacter, createHeadSculptSession } from "../src/index.
 import { stubCanvas } from "./helpers/stub-canvas.js";
 
 describe("head sculpt session (headless)", () => {
+  it("previews, undoes, redoes and commits ear size and placement", () => {
+    const character = createAdultMaleCharacter({ createCanvas: stubCanvas });
+    const session = createHeadSculptSession(character);
+    session.begin();
+    const before = Array.from(session.previewMesh!.geometry.attributes.position.array);
+    session.remember();
+    session.setEarAdjustment("size", 1.2);
+    session.setEarAdjustment("verticalOffset", -5);
+    session.setEarAdjustment("depthOffset", 4);
+    session.setEarAdjustment("facingAngle", 60);
+    session.rebuildPreview();
+    const changed = Array.from(session.previewMesh!.geometry.attributes.position.array);
+    expect(changed).not.toEqual(before);
+    session.undo();
+    expect(session.design.ears).toBeUndefined();
+    expect(Array.from(session.previewMesh!.geometry.attributes.position.array)).toEqual(before);
+    session.redo();
+    expect(Array.from(session.previewMesh!.geometry.attributes.position.array)).toEqual(changed);
+    session.end();
+    expect(character.headDesign.ears).toEqual({ size: 1.2, verticalOffset: -5, depthOffset: 4, facingAngle: 60 });
+    const earDepth = -0.004 + 1.2 * (0.012 * (1 - Math.cos(Math.PI / 3)) - 0.002 * Math.sin(Math.PI / 3));
+    expect(character.rig.worldRest.get("Ear_L").z).toBeCloseTo(earDepth);
+    expect(character.rig.worldRest.get("Ear_R").z).toBeCloseTo(earDepth);
+    expect(character.rig.worldRest.get("Ear_L").y).toBeCloseTo(1.651);
+    character.setHeight(2);
+    character.setHeight(1);
+    expect(character.headDesign.ears).toEqual({ size: 1.2, verticalOffset: -5, depthOffset: 4, facingAngle: 60 });
+    expect(character.rig.worldRest.get("Ear_L").y).toBeCloseTo(1.651);
+
+    const mesh = character.skinnedMesh;
+    const indices = mesh.geometry.attributes.skinIndex, weights = mesh.geometry.attributes.skinWeight;
+    let earVertex = 0;
+    while (earVertex < indices.count &&
+      (indices.getX(earVertex) !== character.rig.boneIndex.get("Ear_L") || weights.getX(earVertex) < 0.95)) earVertex++;
+    expect(earVertex).toBeLessThan(indices.count);
+    let attachmentVertex = 0;
+    while (attachmentVertex < indices.count &&
+      (indices.getX(attachmentVertex) !== character.rig.boneIndex.get("Ear_L") || weights.getX(attachmentVertex) !== 0)) attachmentVertex++;
+    expect(attachmentVertex).toBeLessThan(indices.count);
+    const deformedVertex = (vertex = earVertex) => {
+      character.root.updateMatrixWorld(true);
+      mesh.skeleton.update();
+      return mesh.getVertexPosition(vertex, new THREE.Vector3());
+    };
+    character.update(0);
+    const rest = deformedVertex(), attachmentRest = deformedVertex(attachmentVertex);
+    for (const wiggle of [-1, 1]) {
+      character.faceSliders.ears = wiggle;
+      character.update(0);
+      expect(deformedVertex().distanceTo(rest)).toBeGreaterThan(0.0001);
+      expect(deformedVertex(attachmentVertex).distanceTo(attachmentRest)).toBeLessThan(1e-6);
+    }
+    character.dispose();
+  });
+
+  it("previews, undoes, redoes and commits attached earlobes", () => {
+    const character = createAdultMaleCharacter({ createCanvas: stubCanvas });
+    const session = createHeadSculptSession(character);
+    session.begin();
+    const positions = () => Array.from(session.previewMesh!.geometry.attributes.position.array);
+    const originalPositions = positions();
+    session.remember();
+    session.setAttachedEarlobes(true);
+    session.rebuildPreview();
+    const attachedPositions = positions();
+    expect(attachedPositions).not.toEqual(originalPositions);
+    session.undo();
+    expect(positions()).toEqual(originalPositions);
+    session.redo();
+    expect(positions()).toEqual(attachedPositions);
+    session.end();
+    expect(character.headDesign.attachedEarlobes).toBe(true);
+    character.dispose();
+  });
+
   it.each([1, 1 / 2, 2])("picks, strokes, undoes and commits at height %s", (height) => {
     const character = createAdultMaleCharacter({ createCanvas: stubCanvas, height });
     const session = createHeadSculptSession(character);

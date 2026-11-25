@@ -19,6 +19,22 @@ export function validateHeadDesign(design: HeadDesign): void {
       !design.features || typeof design.features !== "object" || Array.isArray(design.features) || !Array.isArray(design.strokes)) {
     throw new Error("Head design must contain transforms, features, and strokes.");
   }
+  if (design.attachedEarlobes !== undefined && typeof design.attachedEarlobes !== "boolean") {
+    throw new Error("Head design attachedEarlobes must be a boolean.");
+  }
+  if (design.ears !== undefined) {
+    const ears = design.ears;
+    if (!ears || typeof ears !== "object" || Array.isArray(ears) ||
+        Object.keys(ears).some((key) => !["size", "depthOffset", "verticalOffset", "facingAngle"].includes(key))) {
+      throw new Error("Invalid head ears adjustments.");
+    }
+    for (const key of ["size", "depthOffset", "verticalOffset", "facingAngle"] as const) {
+      if (ears[key] !== undefined && (!Number.isFinite(ears[key]) ||
+          (key === "size" && ears[key] <= 0) || (key === "facingAngle" && (ears[key] < 0 || ears[key] > 90)))) {
+        throw new Error(`Invalid head ears.${key}.`);
+      }
+    }
+  }
   for (const [target, transform] of Object.entries(design.transforms)) {
     headTargetTags(target);
     if (!transform || typeof transform !== "object" || Array.isArray(transform) ||

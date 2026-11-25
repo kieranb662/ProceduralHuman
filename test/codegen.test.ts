@@ -32,7 +32,7 @@ describe("round trip", () => {
     const custom = defineHuman({
       name: "Custom Test Human",
       height: 1 / 2,
-      head: { transforms: { ears: { sx: 1.2 } }, features: { chin: 0.4 }, strokes: [
+      head: { attachedEarlobes: true, ears: { size: 1.15, depthOffset: 3, verticalOffset: -4, facingAngle: 45 }, transforms: { ears: { sx: 1.2 } }, features: { chin: 0.4 }, strokes: [
         { target: "skin", mode: "raise", center: [0.02, 1.64, 0.1], delta: [0, 0, 0.002], radius: 0.015, strength: 0.4, mirror: true },
       ] },
       palette: { skin: "#8d5524", textures: { skinPoreDepth: 1.5 } },
@@ -51,7 +51,10 @@ describe("round trip", () => {
 
 describe("generated module", () => {
   it("is a working standalone ES module", async () => {
-    const design = defineHuman({ name: "3rd Test Human!", outfit: { feet: "wraps" } });
+    const design = defineHuman({
+      name: "3rd Test Human!", outfit: { feet: "wraps" },
+      head: { ears: { size: 1.1, depthOffset: 2, verticalOffset: -3, facingAngle: 90 } },
+    });
     const entry = pathToFileURL(path.resolve("src/index.ts")).href;
     const code = generateHumanModule(design, { importFrom: entry });
     const dir = path.resolve("test/.tmp");
@@ -63,11 +66,21 @@ describe("generated module", () => {
     expect(mod.human3rdTestHuman).toEqual(design);
     const human = mod.createHuman3rdTestHuman({ createCanvas });
     expect(human.clothingSlots.feet.item).toBe("wraps");
+    expect(human.headDesign.ears).toEqual({ size: 1.1, depthOffset: 2, verticalOffset: -3, facingAngle: 90 });
   });
 
   it("rejects invalid designs with a clear message", () => {
     expect(() => defineHuman({ pose: { base: "flying" as any } })).toThrow(/pose\.base/);
     expect(() => defineHuman({ outfit: { torso: "cape" as any } })).toThrow(/torso: cape/);
     expect(() => defineHuman({ version: 2 })).toThrow(/version 2/);
+    expect(() => defineHuman(JSON.parse('{"head":{"attachedEarlobes":"yes"}}'))).toThrow(/attachedEarlobes/);
+    expect(() => defineHuman({ head: { ears: { size: 0 } } })).toThrow(/ears\.size/);
+    expect(() => defineHuman({ head: { ears: { verticalOffset: Infinity } } })).toThrow(/ears\.verticalOffset/);
+    expect(() => defineHuman({ head: { ears: { depthOffset: NaN } } })).toThrow(/ears\.depthOffset/);
+    for (const facingAngle of [-0.01, 90.01, NaN, Infinity]) {
+      expect(() => defineHuman({ head: { ears: { facingAngle } } })).toThrow(/ears\.facingAngle/);
+    }
+    expect(() => defineHuman(JSON.parse('{"head":{"ears":{"width":2}}}'))).toThrow(/ears/);
+    expect(() => defineHuman(JSON.parse('{"head":{"ears":null}}'))).toThrow(/ears/);
   });
 });

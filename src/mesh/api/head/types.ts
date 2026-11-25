@@ -5,10 +5,22 @@ import type { Vec3Tuple } from "../../../shared/vector.js";
 export const HEAD_TARGETS = ["all", "skin", "eyes", "lidTop", "lidBot", "brows", "ears", "hair", "teeth", "cavity"] as const;
 export type HeadTarget = (typeof HEAD_TARGETS)[number];
 
-/** Per-part scale (sx/sy/sz, > 0) and offset (x/y/z, meters). */
+/** Per-part scale (sx/sy/sz, > 0) and offset (x/y/z, millimeters). */
 export interface HeadTransform {
   sx?: number; sy?: number; sz?: number;
   x?: number; y?: number; z?: number;
+}
+
+/** Symmetric ear adjustments: uniform size, offsets in millimeters, and facing angle in degrees. */
+export interface EarAdjustments {
+  /** Uniform scale around each ear's anchor; defaults to 1. */
+  size?: number;
+  /** Positive values move both ears toward the front of the face. */
+  depthOffset?: number;
+  /** Positive values move both ears upward. */
+  verticalOffset?: number;
+  /** 0 faces sideways; 90 faces forward. Defaults to 0. */
+  facingAngle?: number;
 }
 
 export const HEAD_FEATURES = ["forehead", "noseWidth", "noseTip", "cheeks", "jawWidth", "chin", "lips"] as const;
@@ -34,6 +46,9 @@ export interface HeadStroke {
 
 /** A complete, serializable head design: part transforms, contour features and sculpt strokes. */
 export interface HeadDesign {
+  /** Omitted or false gives free-hanging lobes; true blends the lobes into the head. */
+  attachedEarlobes?: boolean;
+  ears?: EarAdjustments;
   transforms: Partial<Record<HeadTarget, HeadTransform>>;
   features: Partial<Record<HeadFeature, number>>;
   strokes: HeadStroke[];

@@ -102,6 +102,22 @@ They emit a bubbling `ph-change` event (`{ section, ... }`). Restyle with `--ph-
 (see `PH_THEME_TOKENS`). `examples/editor-playground` is a minimal integration.
 The debug components also expose `skeletonEnabled` and `wireframeEnabled` on `ph-rig-debug`
 and `colliderEnabled` on `ph-physics-debug` for custom controls.
+The head editor's **Attached earlobes** toggle selects attached or free-hanging lobes.
+Set `head.attachedEarlobes: true` in a human design (or `headDesign.attachedEarlobes`
+in character options) to select attached lobes programmatically; omitted or `false`
+means free-hanging. The setting is saved with the head design and supports undo/redo.
+The **Ear anatomy** controls also set ear size, symmetric vertical and depth offsets,
+and facing angle. At 0 degrees the ears face sideways (orthogonal to the face);
+at 90 degrees they face forward. Positive depth offsets move the ears toward the
+face; positive vertical offsets move them upward. For example,
+`defineHuman({ head: { ears: { size: 1.15, depthOffset: 2, verticalOffset: -3,
+facingAngle: 45 } } })` uses a scale factor, millimeters, and degrees.
+Size is applied around each ear's anchor, independently of the general part transforms.
+The ear bases conform to the head mesh across the size, placement, and facing ranges.
+The attachment edge follows the head during ear wiggles; the earlobe toggle still
+controls whether the lobes themselves hang free.
+Ears use a polar-grid shell with a concha depression, branching antihelix, tragus,
+and a curled helix rim.
 The playground's strain heatmap shows the largest surface stretch or compression relative to the
 rest shape, from blue (none) to red (50% or more); it updates with animation and facial morphs.
 

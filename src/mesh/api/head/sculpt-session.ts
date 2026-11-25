@@ -4,7 +4,7 @@ import { restoreNeckJoinNormals } from "../merge.js";
 import { headTargetTags, validateHeadDesign } from "./design.js";
 import type { HeadPreview } from "./head-editing.js";
 import { applyHeadSculptStroke, updateHeadPartNormals } from "./sculpt.js";
-import type { HeadBrushMode, HeadDesign, HeadFeature, HeadStroke, HeadTarget, HeadTransform } from "./types.js";
+import type { EarAdjustments, HeadBrushMode, HeadDesign, HeadFeature, HeadStroke, HeadTarget, HeadTransform } from "./types.js";
 
 const HISTORY_LIMIT = 50;
 
@@ -141,6 +141,14 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
     design.features[key] = value;
   }
 
+  function setAttachedEarlobes(attached: boolean) {
+    design.attachedEarlobes = attached;
+  }
+
+  function setEarAdjustment(key: keyof EarAdjustments, value: number) {
+    (design.ears ??= {})[key] = value;
+  }
+
   /** First surface hit of `raycaster` on the given part of the preview head. */
   function pick(raycaster: THREE.Raycaster, target: HeadTarget): HeadHit | null {
     if (!previewMesh) return null;
@@ -237,7 +245,7 @@ export function createHeadSculptSession(character: ProceduralCharacter, defaultD
   }
 
   return {
-    begin, end, load, rebuildPreview, remember, reset, setTransform, setFeature,
+    begin, end, load, rebuildPreview, remember, reset, setTransform, setFeature, setAttachedEarlobes, setEarAdjustment,
     pick, beginStroke, strokeTo, endStroke,
     undo: () => restore(undoStack, redoStack),
     redo: () => restore(redoStack, undoStack),

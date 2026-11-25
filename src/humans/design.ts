@@ -78,6 +78,8 @@ export function defineHuman(input: HumanDesignInput = {}): HumanDesign {
   }
 
   const head: HeadDesign = {
+    ...(input.head?.attachedEarlobes !== undefined ? { attachedEarlobes: input.head.attachedEarlobes } : {}),
+    ...(input.head?.ears !== undefined ? { ears: structuredClone(input.head.ears) } : {}),
     transforms: structuredClone(input.head?.transforms ?? {}),
     features: structuredClone(input.head?.features ?? {}),
     strokes: structuredClone(input.head?.strokes ?? []),

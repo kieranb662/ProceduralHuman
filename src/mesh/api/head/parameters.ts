@@ -1,5 +1,5 @@
 import type { NumericParameter } from "../../../shared/parameters.js";
-import type { HeadBrushMode, HeadFeature, HeadTarget, HeadTransform } from "./types.js";
+import type { EarAdjustments, HeadBrushMode, HeadFeature, HeadTarget, HeadTransform } from "./types.js";
 
 /** Head parts in editor order, with display labels. */
 export const HEAD_TARGET_LABELS: Record<HeadTarget, string> = {
@@ -27,6 +27,14 @@ export const HEAD_TRANSFORM_PARAMETERS: readonly (NumericParameter<keyof HeadTra
   { key: "x", label: "Horizontal offset (mm)", min: -30, max: 30, step: 0.5, decimals: 1, default: 0 },
   { key: "y", label: "Vertical offset (mm)", min: -30, max: 30, step: 0.5, decimals: 1, default: 0 },
   { key: "z", label: "Forward offset (mm)", min: -30, max: 30, step: 0.5, decimals: 1, default: 0 },
+];
+
+/** Symmetric ear size, placement and facing controls; offsets are stored in millimeters. */
+export const HEAD_EAR_PARAMETERS: readonly (NumericParameter<keyof EarAdjustments> & { default: number })[] = [
+  { key: "size", label: "Ear size", min: 70, max: 130, step: 1, decimals: 0, unit: "%", scale: 100, default: 1 },
+  { key: "verticalOffset", label: "Ear vertical offset (mm)", min: -20, max: 20, step: 0.5, decimals: 1, default: 0 },
+  { key: "depthOffset", label: "Ear depth offset (mm)", min: -15, max: 15, step: 0.5, decimals: 1, default: 0 },
+  { key: "facingAngle", label: "Ear facing angle", min: 0, max: 90, step: 1, decimals: 0, unit: " deg", default: 0 },
 ];
 
 /** Signed millimeter contour offsets of the neutral face. */

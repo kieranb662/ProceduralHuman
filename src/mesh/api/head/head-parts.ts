@@ -2,6 +2,8 @@ import { SIDES } from "../../../shared/sides.js";
 import * as THREE from "three";
 import { buildGeometryFromArrays, ensureUniformAttributes, weldSeamNormals } from "../geometry/attributes.js";
 import { buildEarGeometry } from "./ears.js";
+import { attachEarsToHead } from "./ear-attachment.js";
+import { validateHeadDesign } from "./design.js";
 import { buildEyebrowStrip } from "./eyebrows.js";
 import { buildEyelidShell } from "./eyelids.js";
 import { buildHairCap } from "./hair.js";
@@ -17,12 +19,14 @@ import type { MeshPart } from "../types.js";
 
 export function buildHeadAndFaceParts(rig: HumanoidRig, design: HeadDesign | null = null): HeadParts {
   const defaults: HeadDesign = { transforms: {}, features: {}, strokes: [] };
-  const parts = buildBaseHeadAndFaceParts(rig);
+  validateHeadDesign(design ?? defaults);
+  const parts = buildBaseHeadAndFaceParts(rig, design?.attachedEarlobes);
   applyHeadDesign(parts, rig, design ?? defaults);
+  attachEarsToHead(parts, rig, design ?? defaults);
   return Object.assign(parts, { design: structuredClone(design ?? defaults) });
 }
 
-export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
+export function buildBaseHeadAndFaceParts(rig: HumanoidRig, attachedEarlobes = false): MeshPart[] {
   const { boneIndex, worldRest } = rig;
   const headCenter = new THREE.Vector3(0, 1.662, 0.008);
   const eyeL = worldRest.get("Eye_L");
@@ -450,7 +454,7 @@ export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
 
   for (const [side, s] of SIDES) {
     const earRoot = worldRest.get(`Ear_${side}`);
-    parts.push({ geo: buildEarGeometry(earRoot, s, `Ear_${side}`, boneIndex), mat: 5, tag: `ear_${side}` });
+    parts.push({ geo: buildEarGeometry(earRoot, s, `Ear_${side}`, boneIndex, attachedEarlobes), mat: 5, tag: `ear_${side}` });
   }
 
   parts.push({ geo: buildTeethArc(true, bHead), mat: 6, tag: "teethTop" });

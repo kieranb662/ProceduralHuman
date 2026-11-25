@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { headTargetTags, validateHeadDesign } from "./design.js";
+import { EAR_HINGE_DEPTH, EAR_HINGE_LATERAL } from "./ear-attachment.js";
 import type { HumanoidRig } from "../../../rigging/api/types.js";
 import type { MeshPart } from "../types.js";
 import type { HeadDesign, HeadStroke, HeadTarget, HeadTransform } from "./types.js";
@@ -109,6 +110,16 @@ export function applyHeadDesign(parts: MeshPart[], rig: HumanoidRig, design: Hea
     ears: [0, 1.656, -0.008], hair: [0, 1.662, 0.008],
     teeth: [0, 1.595, 0.112], cavity: [0, 1.595, 0.10],
   };
+  const earPivots = {
+    ear_L: rig.worldRest.get("Ear_L").clone(),
+    ear_R: rig.worldRest.get("Ear_R").clone(),
+  };
+  const earSize = design.ears?.size ?? 1;
+  const earDepth = (design.ears?.depthOffset ?? 0) / 1000;
+  const earVertical = (design.ears?.verticalOffset ?? 0) / 1000;
+  const earAngle = THREE.MathUtils.degToRad(design.ears?.facingAngle ?? 0);
+  const earCos = Math.cos(earAngle), earSin = Math.sin(earAngle);
+  const hasEarEdits = earSize !== 1 || earDepth !== 0 || earVertical !== 0 || earAngle !== 0;
   const transformPoint = (point: THREE.Vector3, pivot: THREE.Vector3, t: HeadTransform | undefined) => {
     if (!t) return point;
     point.sub(pivot).multiply(new THREE.Vector3(t.sx ?? 1, t.sy ?? 1, t.sz ?? 1)).add(pivot);
@@ -131,6 +142,19 @@ export function applyHeadDesign(parts: MeshPart[], rig: HumanoidRig, design: Hea
   };
   const shapePoint = (point: THREE.Vector3, tag: string | null, useContour: boolean) => {
     if (useContour) contour(point);
+    if (hasEarEdits && (tag === "ear_L" || tag === "ear_R")) {
+      point.sub(earPivots[tag]).multiplyScalar(earSize).add(earPivots[tag]);
+      if (earAngle !== 0) {
+        const side = tag === "ear_L" ? 1 : -1;
+        const hingeX = earPivots[tag].x + side * EAR_HINGE_LATERAL * earSize;
+        const hingeZ = earPivots[tag].z + EAR_HINGE_DEPTH * earSize;
+        const x = point.x - hingeX, z = point.z - hingeZ;
+        point.x = hingeX + x * earCos - side * z * earSin;
+        point.z = hingeZ + side * x * earSin + z * earCos;
+      }
+      point.z += earDepth;
+      point.y += earVertical;
+    }
     transformPoint(point, new THREE.Vector3(...pivots.all), design.transforms.all);
     for (const [target, t] of Object.entries(design.transforms)) {
       if (target === "all" || !headTargetTags(target).includes(tag as string)) continue;
@@ -139,7 +163,7 @@ export function applyHeadDesign(parts: MeshPart[], rig: HumanoidRig, design: Hea
     }
     return point;
   };
-  const hasEdits = Object.keys(design.transforms).length || Object.keys(design.features).length || design.strokes.length;
+  const hasEdits = hasEarEdits || Object.keys(design.transforms).length > 0 || Object.keys(design.features).length > 0 || design.strokes.length > 0;
   if (!hasEdits) return;
   const p = new THREE.Vector3();
   const rest = new THREE.Vector3();

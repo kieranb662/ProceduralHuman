@@ -39,8 +39,8 @@ describe("createAdultMaleCharacter (headless)", () => {
   const geo = character.skinnedMesh.geometry;
 
   it("generates the full mesh with 16 FACS morph targets", () => {
-    expect(geo.attributes.position.count).toBe(111382);
-    expect(geo.index!.count / 3).toBe(217090);
+    expect(geo.attributes.position.count).toBe(125412);
+    expect(geo.index!.count / 3).toBe(245458);
     expect(Object.keys(character.skinnedMesh.morphTargetDictionary!)).toEqual([...FACS_MORPH_NAMES]);
   });
 
