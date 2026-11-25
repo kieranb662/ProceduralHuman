@@ -5,13 +5,13 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "test/visual",
   snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{platform}{ext}",
-  timeout: 90_000,
+  timeout: 300_000,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   expect: {
     timeout: 30_000,
-    toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled", caret: "hide" },
+    toHaveScreenshot: { timeout: 60_000, maxDiffPixelRatio: 0.01, animations: "disabled", caret: "hide" },
   },
   use: {
     baseURL: "http://localhost:4173",

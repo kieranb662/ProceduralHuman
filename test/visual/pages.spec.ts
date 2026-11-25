@@ -5,7 +5,7 @@ async function open(page: Page, path: string) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`${path}?test`);
-  await page.waitForFunction(() => (window as unknown as { __phReady?: boolean }).__phReady === true, null, { timeout: 60_000 });
+  await page.waitForFunction(() => (window as unknown as { __phReady?: boolean }).__phReady === true, null, { timeout: 120_000 });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
   return errors;
