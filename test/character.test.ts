@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import {
   FACS_MORPH_NAMES,
+  buildBaseHeadAndFaceParts,
   configureTorsoDetails,
   createAdultMaleCharacter,
   createHumanoidSkeleton,
@@ -34,13 +35,24 @@ describe("validation", () => {
   });
 });
 
+describe("head parts", () => {
+  it("omits scalp hair while preserving both eyebrows", () => {
+    const parts = buildBaseHeadAndFaceParts(createHumanoidSkeleton());
+    const tags = parts.map(({ tag }) => tag);
+
+    expect(tags).not.toContain("hair");
+    expect(tags.filter((tag) => tag.startsWith("brow_"))).toEqual(["brow_L", "brow_R"]);
+    for (const { geo } of parts) geo.dispose();
+  });
+});
+
 describe("createAdultMaleCharacter (headless)", () => {
   const character = createAdultMaleCharacter({ createCanvas: stubCanvas, outfit: { torso: "shirt" } });
   const geo = character.skinnedMesh.geometry;
 
   it("generates the full mesh with 16 FACS morph targets", () => {
-    expect(geo.attributes.position.count).toBe(125412);
-    expect(geo.index!.count / 3).toBe(245458);
+    expect(geo.attributes.position.count).toBe(123759);
+    expect(geo.index!.count / 3).toBe(242322);
     expect(Object.keys(character.skinnedMesh.morphTargetDictionary!)).toEqual([...FACS_MORPH_NAMES]);
   });
 

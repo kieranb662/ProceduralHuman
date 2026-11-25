@@ -55,7 +55,8 @@ export function createHeadEditing(ctx: HeadEditingContext) {
   }
 
   function commitHeadPreview(preview: HeadPreview) {
-    const geometry = preview.geometry.clone();
+    // The preview geometry is height-adjusted for display; commit the canonical parts instead.
+    const geometry = mergeCharacterParts([...bodyParts, ...preview.parts], preview.rig);
     ctx.copyBodySurface(geometry);
     buildFacialMorphTargets(geometry, reference.rig, reference.headGroupIdx, reference.cavGroupIdx, reference.geometry, preview.parts.design);
     const deltas = new Map<string, THREE.Vector3>();

@@ -4,6 +4,34 @@ import { createAdultMaleCharacter, createHeadSculptSession } from "../src/index.
 import { stubCanvas } from "./helpers/stub-canvas.js";
 
 describe("head sculpt session (headless)", () => {
+  it.each([0.5, 1, 1.6, 2])("preserves every body part when leaving the head editor at height %s", (height) => {
+    const character = createAdultMaleCharacter({ createCanvas: stubCanvas });
+    const bodyCount = character.bodyParts.reduce((count, part) => count + part.geo.attributes.position.count, 0);
+    const bodyPositions = () => character.skinnedMesh.geometry.attributes.position.array.slice(0, bodyCount * 3);
+    const canonical = bodyPositions();
+    character.setHeight(height);
+    const before = bodyPositions();
+    const session = createHeadSculptSession(character);
+
+    for (const edit of [false, true]) {
+      session.begin();
+      if (edit) {
+        session.setFeature("cheeks", 3);
+        session.rebuildPreview();
+      }
+      session.end();
+      const after = bodyPositions();
+      let error = 0;
+      for (let i = 0; i < before.length; i++) error = Math.max(error, Math.abs(after[i] - before[i]));
+      expect(error).toBeLessThan(1e-6);
+    }
+
+    expect(character.headDesign.features.cheeks).toBe(3);
+    character.setHeight(1);
+    expect(bodyPositions()).toEqual(canonical);
+    character.dispose();
+  });
+
   it("previews, undoes, redoes and commits ear size and placement", () => {
     const character = createAdultMaleCharacter({ createCanvas: stubCanvas });
     const session = createHeadSculptSession(character);

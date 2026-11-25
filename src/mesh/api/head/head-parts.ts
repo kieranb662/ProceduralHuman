@@ -6,7 +6,6 @@ import { attachEarsToHead } from "./ear-attachment.js";
 import { validateHeadDesign } from "./design.js";
 import { buildEyebrowStrip } from "./eyebrows.js";
 import { buildEyelidShell } from "./eyelids.js";
-import { buildHairCap } from "./hair.js";
 import { nostrilField } from "./nostril.js";
 import { buildOralCavityAndTongue } from "./oral-cavity.js";
 import { applyHeadDesign } from "./sculpt.js";
@@ -462,8 +461,6 @@ export function buildBaseHeadAndFaceParts(rig: HumanoidRig, attachedEarlobes = f
   const oral = buildOralCavityAndTongue(mouthY, bHead, bJaw, mouthLoop, boneIndex);
   parts.push({ geo: oral.cavity, mat: 9, tag: "cavity" });
   parts.push({ geo: oral.tongue, mat: 10, tag: "tongue" });
-
-  parts.push({ geo: buildHairCap(headCenter, boneIndex), mat: 3, tag: "hair" });
 
   return parts;
 }
