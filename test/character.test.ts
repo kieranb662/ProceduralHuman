@@ -59,6 +59,28 @@ describe("createAdultMaleCharacter (headless)", () => {
     expect(Object.keys(character.clips)).toHaveLength(14);
     character.update(1 / 60, { autoBlink: true, autoGaze: true });
   });
+
+  it("keeps the chin and neck skin from folding over when the jaw opens fully", () => {
+    const { skinnedMesh: mesh } = createAdultMaleCharacter({ createCanvas: stubCanvas });
+    const { index, groups } = mesh.geometry;
+    const skinTris = groups.filter((g) => g.materialIndex === 0)
+      .flatMap((g) => Array.from({ length: g.count / 3 }, (_, t) => g.start + t * 3));
+    const normals = () => {
+      mesh.updateMatrixWorld(true);
+      mesh.skeleton.update();
+      const [a, b, c] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      return skinTris.map((t) => {
+        mesh.getVertexPosition(index!.getX(t), a);
+        mesh.getVertexPosition(index!.getX(t + 1), b);
+        mesh.getVertexPosition(index!.getX(t + 2), c);
+        return new THREE.Triangle(a, b, c).getNormal(new THREE.Vector3());
+      });
+    };
+    const rest = normals();
+    mesh.skeleton.getBoneByName("Jaw")!.rotation.x += 0.42; // "Mouth (Jaw Open)" slider at 1
+    const open = normals();
+    expect(rest.filter((n, i) => n.dot(open[i]) < 0)).toHaveLength(0);
+  });
 });
 
 describe("dispose()", () => {

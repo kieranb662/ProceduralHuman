@@ -91,6 +91,26 @@ export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
   const bNosL = boneIndex.get("Nostril_L");
   const bNosR = boneIndex.get("Nostril_R");
 
+  const jawChildren = new Set([bLLC, bLLL, bLLR]);
+  const roots = new Set([bHead, bNeck, bJaw]);
+  // Merge the weakest facial influences into their parent (Jaw or Head) instead of letting the 4-influence cap
+  // drop them; otherwise neighbouring vertices keep different bones and tear apart when the jaw opens.
+  const foldIntoRoots = (pairs: number[][]) => {
+    const merged = new Map<number, number>();
+    for (const [bone, weight] of pairs) merged.set(bone, (merged.get(bone) ?? 0) + weight);
+    while (merged.size > 4) {
+      let weakest = -1;
+      for (const [bone, weight] of merged) {
+        if (!roots.has(bone) && (weakest < 0 || weight < merged.get(weakest)!)) weakest = bone;
+      }
+      if (weakest < 0) break;
+      const root = jawChildren.has(weakest) ? bJaw : bHead;
+      merged.set(root, (merged.get(root) ?? 0) + merged.get(weakest)!);
+      merged.delete(weakest);
+    }
+    return [...merged];
+  };
+
   for (let r = 0; r <= latSegs; r++) {
     for (let c = 0; c <= lonSegs; c++) {
       const phi = phis[c];
@@ -271,7 +291,8 @@ export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
       const isFront = smoothstep(-0.02, 0.35, cosP);
 
       const wNeck = (1 - smoothstep(0, 0.040, aboveCut)) * (0.24 - 0.16 * isFront);
-      const jawFollow = THREE.MathUtils.lerp(0.27, 1, smoothstep(1.547, 1.584, fy));
+      // Fade gently: the chin underside is nearly flat in y, so a steep falloff folds it over when the jaw opens.
+      const jawFollow = THREE.MathUtils.lerp(0.6, 1, smoothstep(1.50, 1.60, fy));
       const jawZone = smoothstep(mouthY + 0.001, mouthY - 0.006, fy)
         * smoothstep(0.005, 0.065, fz) * isFront * jawFollow;
 
@@ -321,7 +342,7 @@ export function buildBaseHeadAndFaceParts(rig: HumanoidRig): MeshPart[] {
       if (wNosL > 0.01) pairs.push([bNosL, wNosL]);
       if (wNosR > 0.01) pairs.push([bNosR, wNosR]);
 
-      const packed = normalizeAndPackWeights(pairs);
+      const packed = normalizeAndPackWeights(foldIntoRoots(pairs));
       skinIdx.push(...packed.indices);
       skinWgt.push(...packed.weights);
     }
