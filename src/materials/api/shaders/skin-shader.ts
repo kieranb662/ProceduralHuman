@@ -165,11 +165,16 @@ roughnessFactor = clamp(
       .replace("normalize( dFdx( surf_pos.xyz ) )", "dFdx( surf_pos.xyz )")
       .replace("normalize( dFdy( surf_pos.xyz ) )", "dFdy( surf_pos.xyz )");
     shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>", bumpChunk);
-    const diffuseLine = "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );";
+    // three 0.186 evaluates the Lambert BRDF inline; 0.187 computes it into `diffuseBRDF` first (EON when diffuse roughness is on).
     const physicalChunk = THREE.ShaderChunk.lights_physical_pars_fragment;
-    if (!physicalChunk.includes(diffuseLine)) {
+    const diffuseVariant = [
+      { line: "reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );", brdf: "BRDF_Lambert( material.diffuseContribution )" },
+      { line: "reflectedLight.directDiffuse += irradiance * diffuseBRDF * ( 1.0 - F );", brdf: "diffuseBRDF" },
+    ].find((variant) => physicalChunk.includes(variant.line));
+    if (!diffuseVariant) {
       throw new Error("Skin scattering requires the supported Three.js physical diffuse shader.");
     }
+    const diffuseLine = diffuseVariant.line;
     // DirectLight.color already includes shadow attenuation. Leave all specular lobes untouched.
     shader.fragmentShader = shader.fragmentShader.replace("#include <lights_physical_pars_fragment>",
       physicalChunk.replace(diffuseLine, `
@@ -189,7 +194,7 @@ vec3 skinExitFresnel = F_Schlick(
 vec3 skinDiffuseIrradiance = mix(
   irradiance * (1.0 - F), skinScattered * (1.0 - skinExitFresnel), skinScattering
 );
-reflectedLight.directDiffuse += skinDiffuseIrradiance * BRDF_Lambert( material.diffuseContribution );
+reflectedLight.directDiffuse += skinDiffuseIrradiance * ${diffuseVariant.brdf};
 `));
   };
   material.customProgramCacheKey = () => "skin-rest-triplanar-v7-filtered-tone";
