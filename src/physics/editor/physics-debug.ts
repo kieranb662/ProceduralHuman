@@ -28,13 +28,20 @@ export class PhPhysicsDebug extends PhEditorElement<ProceduralCharacter> {
 
   constructor() {
     super([STYLES]);
-    this.toggle.addEventListener("change", () => { if (this.mesh) this.mesh.visible = this.toggle.checked; });
+    this.toggle.addEventListener("change", () => { this.colliderEnabled = this.toggle.checked; });
   }
 
   set character(character: ProceduralCharacter) { this.bind(character); }
   get character() { return this.target; }
   /** Scene (or any parent) the debug capsule is added to. */
   set debugScene(scene: THREE.Object3D) { this.scene = scene; this.refresh(); }
+
+  /** Whether the collider overlay is enabled. */
+  get colliderEnabled() { return this.toggle.checked; }
+  set colliderEnabled(enabled: boolean) {
+    this.toggle.checked = enabled;
+    if (this.mesh) this.mesh.visible = enabled;
+  }
 
   connectedCallback() {
     super.connectedCallback();

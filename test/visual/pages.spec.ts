@@ -45,6 +45,106 @@ test.describe("default-male demo", () => {
 });
 
 test.describe("editor playground", () => {
+  test("debug controls stay in the viewport and control the scene", async ({ page }) => {
+    const errors = await open(page, "/editor-playground/");
+    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    const overlay = page.getByRole("region", { name: "Debug controls" });
+    const skeleton = overlay.getByRole("button", { name: "Skeleton" });
+    const wireframe = overlay.getByRole("button", { name: "Wireframe" });
+    const capsule = overlay.getByRole("button", { name: "Collider" });
+    const strain = overlay.getByRole("button", { name: "Strain heatmap" });
+    const sceneState = () => page.evaluate(() => {
+      const { scene, character } = (window as unknown as {
+        playground: {
+          scene: { children: { type: string; name: string; visible: boolean }[] };
+          character: { skinnedMesh: {
+            material: { wireframe: boolean }[];
+            children: { name: string; visible: boolean }[];
+          } };
+        };
+      }).playground;
+      return {
+        skeleton: scene.children.find((child) => child.type === "SkeletonHelper")?.visible,
+        wireframe: character.skinnedMesh.material.every((material) => material.wireframe),
+        capsule: scene.children.find((child) => child.name === "PhysicsCapsuleDebug")?.visible,
+        strain: character.skinnedMesh.children.find((child) => child.name === "StrainHeatmap")?.visible,
+      };
+    });
+    const materialIds = () => page.evaluate(() => (window as unknown as {
+      playground: { character: { skinnedMesh: { material: { uuid: string }[] } } };
+    }).playground.character.skinnedMesh.material.map((material) => material.uuid));
+
+    await expect(overlay).toBeVisible();
+    for (const button of [skeleton, wireframe, capsule, strain]) await expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(await sceneState()).toEqual({ skeleton: false, wireframe: false, capsule: false, strain: false });
+    const originalMaterials = await materialIds();
+    await skeleton.focus();
+    await page.keyboard.press("Space");
+    await wireframe.click();
+    await capsule.click();
+    await strain.click();
+    for (const button of [skeleton, wireframe, capsule, strain]) await expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(await sceneState()).toEqual({ skeleton: true, wireframe: true, capsule: true, strain: true });
+    expect(await materialIds()).toEqual(originalMaterials);
+    await settled(page);
+    await page.evaluate(() => {
+      const { character } = (window as unknown as {
+        playground: { character: { palette: object; setPalette: (palette: object) => void } };
+      }).playground;
+      character.setPalette(character.palette);
+      for (const section of ["materials", "animations"]) {
+        document.dispatchEvent(new CustomEvent("ph-change", { detail: { section } }));
+      }
+    });
+    const rebuiltMaterials = await materialIds();
+    expect(rebuiltMaterials).not.toEqual(originalMaterials);
+    expect(await sceneState()).toEqual({ skeleton: true, wireframe: true, capsule: true, strain: true });
+    await settled(page);
+    await page.getByRole("tab", { name: "Lighting" }).click();
+    await expect(overlay).toBeVisible();
+    await skeleton.click();
+    await wireframe.click();
+    await capsule.click();
+    await strain.click();
+    for (const button of [skeleton, wireframe, capsule, strain]) await expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(await sceneState()).toEqual({ skeleton: false, wireframe: false, capsule: false, strain: false });
+    expect(await materialIds()).toEqual(rebuiltMaterials);
+
+    for (const viewport of [{ width: 1280, height: 720 }, { width: 375, height: 812 }, { width: 320, height: 812 }]) {
+      await page.setViewportSize(viewport);
+      await expect.poll(async () => {
+        const canvasBox = (await page.locator("#viewport canvas").boundingBox())!;
+        const overlayBox = (await overlay.boundingBox())!;
+        return [
+          Math.round(canvasBox.x + canvasBox.width - (overlayBox.x + overlayBox.width)),
+          Math.round(canvasBox.y + canvasBox.height - (overlayBox.y + overlayBox.height)),
+        ];
+      }).toEqual([12, 12]);
+      for (const button of [skeleton, wireframe, capsule, strain]) await expect(button).toBeInViewport({ ratio: 1 });
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("strain heatmap measures deformation and restores the original material", async ({ page }) => {
+    const errors = await open(page, "/editor-playground/");
+    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    const samples = await page.evaluate(async (moduleUrl) => {
+      const { sampleStrainHeatmap } = await import(moduleUrl);
+      return sampleStrainHeatmap() as Record<string, number[]>;
+    }, `/@fs/${path.resolve("test/visual/strain-scene.js")}`);
+    expect(samples.original).toEqual(samples.restored);
+    expect(samples.neutral[2]).toBeGreaterThan(samples.neutral[0]);
+    for (let i = 0; i < 3; i++) expect(Math.abs(samples.rigid[i] - samples.neutral[i])).toBeLessThan(8);
+    expect(samples.mild[1]).toBeGreaterThan(samples.neutral[1]);
+    expect(samples.moderate[1]).toBeGreaterThan(samples.moderate[0]);
+    expect(samples.moderate[1]).toBeGreaterThan(samples.moderate[2]);
+    for (const name of ["stretch", "compression", "shear", "morphed", "replacement"]) {
+      expect(samples[name][0], name).toBeGreaterThan(samples[name][2]);
+      expect(samples[name][0], name).toBeGreaterThan(samples[name][1]);
+    }
+    expect(errors).toEqual([]);
+  });
+
   test("lighting and materials editors render", async ({ page }) => {
     const errors = await open(page, "/editor-playground/");
     await page.getByRole("tab", { name: "Lighting" }).click();

@@ -22,8 +22,8 @@ export class PhRigDebug extends PhEditorElement<ProceduralCharacter> {
 
   constructor() {
     super();
-    this.skeleton.addEventListener("change", () => { if (this.helper) this.helper.visible = this.skeleton.checked; });
-    this.wireframe.addEventListener("change", () => this.applyWireframe());
+    this.skeleton.addEventListener("change", () => { this.skeletonEnabled = this.skeleton.checked; });
+    this.wireframe.addEventListener("change", () => { this.wireframeEnabled = this.wireframe.checked; });
   }
 
   set character(character: ProceduralCharacter) { this.bind(character); }
@@ -51,8 +51,19 @@ export class PhRigDebug extends PhEditorElement<ProceduralCharacter> {
     this.root.append(this.skeleton, this.wireframe);
   }
 
+  /** Whether the skeleton overlay is enabled. */
+  get skeletonEnabled() { return this.skeleton.checked; }
+  set skeletonEnabled(enabled: boolean) {
+    this.skeleton.checked = enabled;
+    if (this.helper) this.helper.visible = enabled;
+  }
+
   /** Current wireframe state; apply it to any extra meshes that share the materials. */
   get wireframeEnabled() { return this.wireframe.checked; }
+  set wireframeEnabled(enabled: boolean) {
+    this.wireframe.checked = enabled;
+    this.applyWireframe();
+  }
 
   private applyWireframe() {
     if (!this.target) return;

@@ -5,6 +5,7 @@ import { createHuman, createParkMillerRng, createStudioLighting } from "@kieranb
 import { defaultAdultMale } from "@kieranb662/procedural-human/humans";
 import { registerEditorElements } from "@kieranb662/procedural-human/editor";
 import { frameDue, invalidate, testMode } from "../test-mode.js";
+import { createStrainHeatmap } from "./strain-heatmap.js";
 
 registerEditorElements();
 
@@ -46,6 +47,22 @@ for (const el of document.querySelectorAll("ph-rig-debug, ph-physics-debug")) {
   el.character = character;
   el.debugScene = scene;
 }
+const rigDebug = document.querySelector("ph-rig-debug");
+const physicsDebug = document.querySelector("ph-physics-debug");
+const strainHeatmap = createStrainHeatmap(character.skinnedMesh);
+const debugControls = [
+  [document.querySelector('[data-debug="skeleton"]'), rigDebug, "skeletonEnabled"],
+  [document.querySelector('[data-debug="wireframe"]'), rigDebug, "wireframeEnabled"],
+  [document.querySelector('[data-debug="collider"]'), physicsDebug, "colliderEnabled"],
+  [document.querySelector('[data-debug="strain"]'), strainHeatmap, "enabled"],
+];
+for (const [button, debug, property] of debugControls) {
+  button.setAttribute("aria-pressed", String(debug[property]));
+  button.addEventListener("click", () => {
+    debug[property] = !debug[property];
+    button.setAttribute("aria-pressed", String(debug[property]));
+  });
+}
 document.querySelector("ph-lighting-editor").lighting = lighting;
 const animationEditor = document.querySelector("ph-animation-editor");
 const reachTarget = new THREE.Vector3(-0.24, 1.34, 0.48);
@@ -72,6 +89,7 @@ renderer.setAnimationLoop(() => {
   if (!frameDue()) return;
   const dt = testMode ? 0 : Math.min(clock.getDelta(), 0.05);
   character.update(dt, { autoBlink: !testMode && animationEditor.autoBlink, autoGaze: !testMode && animationEditor.autoGaze, reachTarget });
+  strainHeatmap.update();
   controls.update();
   renderer.render(scene, camera);
   window.__phReady = true;

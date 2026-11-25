@@ -10,13 +10,48 @@
     body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
     #viewport { position: relative; min-width: 0; }
     #viewport canvas { display: block; width: 100%; height: 100%; }
+    #debug-overlay {
+      position: absolute; right: 12px; bottom: 12px; z-index: 1;
+      display: flex; gap: 8px; width: 420px; max-width: calc(100% - 24px);
+      padding: 11px 20px; border: 1px solid #39414e; border-radius: 18px;
+      background: #10151c; box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+      box-sizing: border-box;
+    }
+    #debug-overlay button {
+      position: relative; display: flex; flex: 0 1 88px; min-width: 0; height: 64px;
+      flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+      padding: 6px; border: 1px solid #303946; border-radius: 11px;
+      background: #191f28; color: #b6c1d0; font: 11px system-ui, sans-serif; cursor: pointer;
+    }
+    #debug-overlay button[aria-pressed="true"] { border-color: #24baff; background: #1d4357; color: #24baff; }
+    #debug-overlay button:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+    #debug-overlay button::after {
+      content: ""; position: absolute; top: 8px; right: 8px; width: 4px; height: 4px;
+      box-sizing: border-box; border: 1px solid currentColor; border-radius: 50%;
+    }
+    #debug-overlay button[aria-pressed="true"]::after { background: currentColor; }
+    #debug-overlay .icon { width: 28px; height: 28px; background: currentColor; mask: var(--icon) center / contain no-repeat; }
+    #debug-overlay [data-debug="skeleton"] .icon { --icon: url("./skeleton-icon.svg"); }
+    #debug-overlay [data-debug="wireframe"] .icon { --icon: url("./wireframe-icon.svg"); }
+    #debug-overlay [data-debug="collider"] .icon { --icon: url("./collider-icon.svg"); }
+    #debug-overlay [data-debug="strain"] .icon { --icon: url("./strain-heatmap-icon.svg"); }
     aside { overflow: hidden; display: flex; flex-direction: column; padding: 12px; border-left: 1px solid #334155; background: rgba(15, 23, 42, 0.95); }
     ph-tabs { flex: 1 1 auto; min-height: 0; }
     @media (max-width: 760px) { body { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; } aside { border-left: 0; border-top: 1px solid #334155; } }
+    @media (max-width: 430px) { #debug-overlay { gap: 4px; padding: 10px 8px; } #debug-overlay button { padding: 6px 2px; } }
   </style>
 </head>
 <body>
-  <div id="viewport"></div>
+  <div id="viewport">
+    <section id="debug-overlay" aria-label="Debug controls">
+      <button type="button" data-debug="skeleton" aria-pressed="false"><span class="icon" aria-hidden="true"></span>Skeleton</button>
+      <button type="button" data-debug="wireframe" aria-pressed="false"><span class="icon" aria-hidden="true"></span>Wireframe</button>
+      <button type="button" data-debug="collider" aria-pressed="false"><span class="icon" aria-hidden="true"></span>Collider</button>
+      <button type="button" data-debug="strain" aria-label="Strain heatmap" aria-pressed="false" title="Surface strain: blue is undeformed; red is 50% or more stretch or compression."><span class="icon" aria-hidden="true"></span>Strain</button>
+    </section>
+    <ph-rig-debug hidden></ph-rig-debug>
+    <ph-physics-debug hidden></ph-physics-debug>
+  </div>
   <aside>
     <ph-tabs>
       <ph-tab-panel label="Animate">
@@ -32,10 +67,6 @@
       </ph-tab-panel>
       <ph-tab-panel label="Lighting">
         <ph-lighting-editor></ph-lighting-editor>
-        <ph-panel heading="Debug">
-          <ph-rig-debug></ph-rig-debug>
-          <ph-physics-debug></ph-physics-debug>
-        </ph-panel>
       </ph-tab-panel>
       <ph-tab-panel label="Export">
         <ph-panel heading="Export human">

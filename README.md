@@ -100,6 +100,10 @@ Elements: `ph-animation-editor`, `ph-face-editor`, `ph-clothing-editor`, `ph-tor
 `ph-materials-editor`, `ph-lighting-editor`, `ph-rig-debug`, `ph-physics-debug`, `ph-human-export`.
 They emit a bubbling `ph-change` event (`{ section, ... }`). Restyle with `--ph-*` CSS custom properties
 (see `PH_THEME_TOKENS`). `examples/editor-playground` is a minimal integration.
+The debug components also expose `skeletonEnabled` and `wireframeEnabled` on `ph-rig-debug`
+and `colliderEnabled` on `ph-physics-debug` for custom controls.
+The playground's strain heatmap shows the largest surface stretch or compression relative to the
+rest shape, from blue (none) to red (50% or more); it updates with animation and facial morphs.
 
 ## Source layout
 
